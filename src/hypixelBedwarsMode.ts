@@ -76,7 +76,20 @@ export function getBedwarsStats(
     return stats;
   }
 
-  const config = bedwarsModes[modeValue];
+  let config = bedwarsModes[modeValue];
+  if (!config && modeValue.startsWith('bedwars_')) {
+    // Hypixel occasionally appends extra suffixes for rotating queues
+    // (for example lucky variants). Match the longest known prefix.
+    const suffix = modeValue.slice('bedwars_'.length);
+    const known = Object.values(bedwarsModes)
+      .map((m) => m.prefix)
+      .sort((a, b) => b.length - a.length);
+    const match = known.find((p) => suffix === p || suffix.startsWith(`${p}_`));
+    if (match) {
+      config = { prefix: match, suffix: '_bedwars' };
+    }
+  }
+
   if (config) {
     const { prefix, suffix } = config;
     stats.winsInMode = (bwStats[`${prefix}_wins${suffix}`] as number) || 0;
