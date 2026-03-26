@@ -1,0 +1,25 @@
+{
+  "name": "duelsplus-plugin-bedwars",
+  "version": "1.0.0",
+  "description": "Bedwars plugin for Duels+ proxy (roster + game mode API)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@duelsplus/plugin-api": "file:../plugin-api"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.3.3"
+  },
+  "duelsplus": {
+    "id": "bedwars",
+    "name": "Bedwars Plugin",
+    "description": "Hypixel Bedwars: team roster, pluggable stats/stars/stat tags",
+    "apiVersion": ">=1.0.0"
+  }
+}
