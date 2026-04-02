@@ -37,6 +37,18 @@ export function getWinsColorBedwars(wins: number): string {
   return getModeWinColor(wins);
 }
 
+export function getLossesColor(losses: number): string {
+  if (losses <= 49) return `§7${losses}`;
+  if (losses <= 249) return `§8${losses}`;
+  if (losses <= 499) return `§f${losses}`;
+  if (losses <= 999) return `§b${losses}`;
+  if (losses <= 1999) return `§3${losses}`;
+  if (losses <= 4999) return `§d${losses}`;
+  if (losses <= 9999) return `§5${losses}`;
+  if (losses <= 24999) return `§c${losses}`;
+  return `§4${losses}`;
+}
+
 export function getWlrColor(wlr: number): string {
   const wlrNum = parseFloat(String(wlr)) || 0;
   const wlrStr = wlrNum.toFixed(2).replace(/\.00$/, '');
@@ -73,15 +85,65 @@ export function getFkdrColor(fkdr: number): string {
   return `§8${fkdrStr}`;
 }
 
-/** Simple star tier from Hypixel bedwars_level */
-export function getStarsColor(stars: number): string {
-  const s = Math.floor(stars);
-  if (s >= 500) return `§5${s}✫`;
-  if (s >= 300) return `§d${s}✫`;
-  if (s >= 200) return `§c${s}✫`;
-  if (s >= 120) return `§6${s}✫`;
-  if (s >= 80) return `§e${s}✫`;
-  if (s >= 40) return `§a${s}✫`;
-  if (s >= 20) return `§b${s}✫`;
-  return `§7${s}✫`;
+// ---------------------------------------------------------------------------
+// Prestige star formatting — mirrors proxy StatsMessageBuilder
+// ---------------------------------------------------------------------------
+
+function getStarIcon(level: number): string {
+  if (level < 1100) return '✫';
+  if (level < 2100) return '✪';
+  if (level < 3100) return '⚝';
+  return '✥';
+}
+
+function getPrestigePalette(prestige: number): string[] {
+  if (prestige < 100) return ['§7', '§7', '§7', '§7', '§7', '§7', '§7'];
+  if (prestige < 200) return ['§f', '§f', '§f', '§f', '§f', '§f', '§f'];
+  if (prestige < 300) return ['§6', '§6', '§6', '§6', '§6', '§6', '§6'];
+  if (prestige < 400) return ['§b', '§b', '§b', '§b', '§b', '§b', '§b'];
+  if (prestige < 500) return ['§2', '§2', '§2', '§2', '§2', '§2', '§2'];
+  if (prestige < 600) return ['§3', '§3', '§3', '§3', '§3', '§3', '§3'];
+  if (prestige < 700) return ['§4', '§4', '§4', '§4', '§4', '§4', '§4'];
+  if (prestige < 800) return ['§d', '§d', '§d', '§d', '§d', '§d', '§d'];
+  if (prestige < 900) return ['§9', '§9', '§9', '§9', '§9', '§9', '§9'];
+  if (prestige < 1000) return ['§5', '§5', '§5', '§5', '§5', '§5', '§5'];
+  if (prestige < 1100) return ['§c', '§6', '§e', '§a', '§b', '§d', '§5'];
+  if (prestige < 1200) return ['§7', '§f', '§f', '§f', '§f', '§7', '§7'];
+  if (prestige < 1300) return ['§7', '§e', '§e', '§e', '§e', '§6', '§7'];
+  if (prestige < 1400) return ['§7', '§b', '§b', '§b', '§b', '§3', '§7'];
+  if (prestige < 1500) return ['§7', '§a', '§a', '§a', '§a', '§2', '§7'];
+  if (prestige < 1600) return ['§7', '§3', '§3', '§3', '§3', '§9', '§7'];
+  if (prestige < 1700) return ['§7', '§c', '§c', '§c', '§c', '§4', '§7'];
+  if (prestige < 1800) return ['§7', '§d', '§d', '§d', '§d', '§5', '§7'];
+  if (prestige < 1900) return ['§7', '§9', '§9', '§9', '§9', '§1', '§7'];
+  if (prestige < 2000) return ['§7', '§5', '§5', '§5', '§5', '§8', '§7'];
+  if (prestige < 2100) return ['§8', '§7', '§f', '§f', '§7', '§7', '§8'];
+  if (prestige < 2200) return ['§f', '§e', '§e', '§6', '§6', '§6', '§6'];
+  if (prestige < 2300) return ['§6', '§f', '§f', '§b', '§3', '§3', '§3'];
+  if (prestige < 2400) return ['§5', '§d', '§d', '§6', '§e', '§e', '§e'];
+  if (prestige < 2500) return ['§b', '§f', '§f', '§7', '§7', '§8', '§8'];
+  if (prestige < 2600) return ['§f', '§a', '§a', '§2', '§2', '§2', '§2'];
+  if (prestige < 2700) return ['§4', '§c', '§c', '§d', '§d', '§d', '§d'];
+  if (prestige < 2800) return ['§e', '§f', '§f', '§8', '§8', '§8', '§8'];
+  if (prestige < 2900) return ['§a', '§2', '§2', '§6', '§6', '§e', '§e'];
+  if (prestige < 3000) return ['§b', '§3', '§3', '§9', '§9', '§1', '§1'];
+  if (prestige < 3100) return ['§e', '§6', '§6', '§c', '§c', '§4', '§4'];
+  return ['§7', '§7', '§7', '§7', '§7', '§7', '§7'];
+}
+
+/** Format Bedwars level with proper prestige colors: [100✫] */
+export function formatBedwarsLevel(level: number): string {
+  const starIcon = getStarIcon(level);
+  const levelStr = level.toString();
+  const prestige = Math.floor(level / 100) * 100;
+  const colors = getPrestigePalette(prestige);
+  const c = (i: number): string => colors[Math.min(i, colors.length - 1)] ?? '§7';
+
+  let result = c(0) + '[';
+  for (let i = 0; i < levelStr.length; i++) {
+    result += c(i + 1) + levelStr[i];
+  }
+  result += c(levelStr.length + 1) + starIcon;
+  result += c(levelStr.length + 2) + ']';
+  return result;
 }
