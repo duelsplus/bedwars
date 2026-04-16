@@ -84,10 +84,12 @@ export default class BedwarsPlugin extends Plugin {
   private lastRows: RowModel[] = [];
 
   private debugChat = false;
+  private autoRoster = true;
 
   onLoad(ctx: PluginContext): void {
     this.ctx = ctx;
     this.debugChat = ctx.storage.get<boolean>('debugChat') ?? false;
+    this.autoRoster = ctx.storage.get<boolean>('autoRoster') ?? true;
 
     ctx.gameModes.register({
       id: 'hypixel-bedwars-queues',
@@ -98,6 +100,8 @@ export default class BedwarsPlugin extends Plugin {
           | undefined;
         if (!bw) return null;
         const e = getBedwarsStats(locrawMode.toLowerCase(), bw);
+        const achievements = rawPlayer.achievements as Record<string, number> | undefined;
+        const stars = achievements?.bedwars_level ?? 0;
         return {
           wins: e.winsInMode,
           losses: e.lossesInMode,
@@ -105,6 +109,7 @@ export default class BedwarsPlugin extends Plugin {
           bestWinstreak: 0,
           tagKills: e.finalKillsInMode,
           tagDeaths: e.finalDeathsInMode,
+          stars,
         };
       },
       statTagColorProfile: 'ratio',
@@ -183,6 +188,102 @@ export default class BedwarsPlugin extends Plugin {
         }
       },
     });
+
+    ctx.commands.register({
+      name: 'bwsettings',
+      description: 'Open Bedwars plugin settings',
+      aliases: ['bws'],
+      usage: '/bwsettings',
+      execute: () => {
+        this.openSettingsGUI();
+      },
+    });
+  }
+
+  // ── Settings GUI ──
+
+  private openSettingsGUI(): void {
+    const ctx = this.ctx;
+    let gui: PluginChestGUI;
+    try {
+      gui = ctx.gui.createChestGUI('§8Bedwars Settings', 3);
+    } catch {
+      ctx.client.sendChat(`${PREFIX} §cCould not open settings GUI.`);
+      return;
+    }
+
+    gui.fillBlack();
+
+    const BW_STAT_OPTIONS = ['None', 'Stars', 'Wins', 'Losses', 'WLR', 'FKDR', 'WS'] as const;
+    type BwStat = (typeof BW_STAT_OPTIONS)[number];
+
+    const cycleNext = <T>(current: T, options: readonly T[]): T => {
+      const idx = options.indexOf(current);
+      return options[(idx + 1) % options.length];
+    };
+
+    const makeToggle = (isOn: boolean, name: string, desc: string): ReturnType<typeof ctx.gui.createItem> => {
+      return ctx.gui.createItem(
+        isOn ? 351 : 352, // lime dye / gray dye
+        0,
+        `${isOn ? '§a' : '§c'}${name}`,
+        [isOn ? '§7Status: §aEnabled' : '§7Status: §cDisabled', '', `§7${desc}`, '', '§eClick to toggle'],
+      );
+    };
+
+    const makeCycle = (value: string, name: string, desc: string, options: readonly string[]): ReturnType<typeof ctx.gui.createItem> => {
+      const lore: string[] = [`§7${desc}`, ''];
+      for (const opt of options) {
+        lore.push(opt === value ? `§a▸ ${opt}` : `§7  ${opt}`);
+      }
+      lore.push('', '§eClick to cycle');
+      return ctx.gui.createItem(339, 0, `§e${name}: §f${value}`, lore); // paper
+    };
+
+    const currentPrefix = (ctx.settings.get('statTagsPrefix') as string) || 'None';
+    const currentSuffix = (ctx.settings.get('statTagsSuffix') as string) || 'Wins';
+
+    const updateAll = (): void => {
+      // Slot 10: Auto Roster toggle
+      gui.updateSlot(10, makeToggle(this.autoRoster, 'Auto Roster', 'Show roster when a BW game starts'), (_, button) => {
+        this.autoRoster = !this.autoRoster;
+        ctx.storage.set('autoRoster', this.autoRoster);
+        updateAll();
+      });
+
+      // Slot 12: Stat Tag Prefix
+      const prefix = (ctx.settings.get('statTagsPrefix') as string) || 'None';
+      gui.updateSlot(12, makeCycle(prefix, 'Tag Prefix', 'Stat before player name', BW_STAT_OPTIONS), () => {
+        const cur = (ctx.settings.get('statTagsPrefix') as string) || 'None';
+        const next = cycleNext(cur as BwStat, BW_STAT_OPTIONS);
+        ctx.settings.set('statTagsPrefix', next);
+        updateAll();
+      });
+
+      // Slot 13: Stat Tag Suffix
+      const suffix = (ctx.settings.get('statTagsSuffix') as string) || 'Wins';
+      gui.updateSlot(13, makeCycle(suffix, 'Tag Suffix', 'Stat after player name', BW_STAT_OPTIONS), () => {
+        const cur = (ctx.settings.get('statTagsSuffix') as string) || 'Wins';
+        const next = cycleNext(cur as BwStat, BW_STAT_OPTIONS);
+        ctx.settings.set('statTagsSuffix', next);
+        updateAll();
+      });
+
+      // Slot 15: Debug Chat toggle
+      gui.updateSlot(15, makeToggle(this.debugChat, 'Debug Chat', 'Log BW chat packets to console'), () => {
+        this.debugChat = !this.debugChat;
+        ctx.storage.set('debugChat', this.debugChat);
+        updateAll();
+      });
+
+      // Slot 22: Close button
+      gui.updateSlot(22, ctx.gui.createItem(MATERIAL_BARRIER, 0, '§cClose', ['§7Close this menu']), () => {
+        gui.close();
+      });
+    };
+
+    updateAll();
+    gui.open();
   }
 
   private enterBedwarsGame(mode: string): void {
@@ -195,13 +296,15 @@ export default class BedwarsPlugin extends Plugin {
     this.collectingEarlyChats = true;
 
     this.clearFallbackTimeout();
-    this.fallbackRosterTimeout = this.ctx.scheduler.setTimeout(() => {
-      this.fallbackRosterTimeout = null;
-      if (this.inBedwarsGame && !this.bannerSeen && this.rosterPrintedForServer === null) {
-        this.ctx.logger.debug('[Bedwars] Banner not detected — fallback /who trigger');
-        this.requestWhoAndPrintSoon('fallback');
-      }
-    }, 3500);
+    if (this.autoRoster) {
+      this.fallbackRosterTimeout = this.ctx.scheduler.setTimeout(() => {
+        this.fallbackRosterTimeout = null;
+        if (this.inBedwarsGame && !this.bannerSeen && this.rosterPrintedForServer === null) {
+          this.ctx.logger.debug('[Bedwars] Banner not detected — fallback /who trigger');
+          this.requestWhoAndPrintSoon('fallback');
+        }
+      }, 3500);
+    }
   }
 
   private onChatPacket(data: unknown): void {
@@ -224,7 +327,7 @@ export default class BedwarsPlugin extends Plugin {
   }
 
   private tryDetectBanner(raw: string): void {
-    if (!this.inBedwarsGame || this.bannerSeen) return;
+    if (!this.inBedwarsGame || this.bannerSeen || !this.autoRoster) return;
 
     const flat = this.extractTextFromChatJson(raw);
     if (!isBedWarsTitleBanner(flat)) return;
