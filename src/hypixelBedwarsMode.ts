@@ -1,7 +1,3 @@
-/**
- * Per-mode Bedwars stats from Hypixel player.stats.Bedwars (mirrors proxy utils/bedwarsModeApiStats).
- */
-
 export interface BedwarsExtractedModeStats {
   winsInMode: number;
   lossesInMode: number;
@@ -78,8 +74,7 @@ export function getBedwarsStats(
 
   let config = bedwarsModes[modeValue];
   if (!config && modeValue.startsWith('bedwars_')) {
-    // Hypixel occasionally appends extra suffixes for rotating queues
-    // (for example lucky variants). Match the longest known prefix.
+    // Match longest known prefix for rotating queue variants
     const suffix = modeValue.slice('bedwars_'.length);
     const known = Object.values(bedwarsModes)
       .map((m) => m.prefix)

@@ -1,7 +1,3 @@
-/**
- * Stat tier colours aligned with Duels+ proxy (utils/statsColors).
- */
-
 function formatAlternating(str: string, colors: string[]): string {
   let formatted = '';
   for (let i = 0; i < str.length; i++) {
@@ -85,10 +81,6 @@ export function getFkdrColor(fkdr: number): string {
   return `§8${fkdrStr}`;
 }
 
-// ---------------------------------------------------------------------------
-// Prestige star formatting — mirrors proxy StatsMessageBuilder
-// ---------------------------------------------------------------------------
-
 function getStarIcon(level: number): string {
   if (level < 1100) return '✫';
   if (level < 2100) return '✪';
@@ -131,7 +123,6 @@ function getPrestigePalette(prestige: number): string[] {
   return ['§7', '§7', '§7', '§7', '§7', '§7', '§7'];
 }
 
-/** Format Bedwars level with proper prestige colors: [100✫] */
 export function formatBedwarsLevel(level: number): string {
   const starIcon = getStarIcon(level);
   const levelStr = level.toString();

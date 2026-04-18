@@ -4,7 +4,10 @@
   "description": "Bedwars plugin for Duels+ proxy (roster + game mode API)",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "node ../plugin-api/dist/cli.js build",
+    "build:dev": "node ../plugin-api/dist/cli.js build --watch",
+    "build:prod": "node ../plugin-api/dist/cli.js build --minify",
+    "build:tsc": "tsc",
     "clean": "rimraf dist"
   },
   "license": "ISC",

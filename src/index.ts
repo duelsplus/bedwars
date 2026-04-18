@@ -3,11 +3,13 @@ import {
   type PluginContext,
   type PluginChestGUI,
   type GameStartPayload,
+  type GameEndPayload,
   type LocrawUpdatePayload,
+  type HypixelPlayerStats,
 } from '@duelsplus/plugin-api';
 
 import { getBedwarsStats } from './hypixelBedwarsMode';
-import { getWinsColorBedwars, getWlrColor, getFkdrColor, formatBedwarsLevel } from './statColors';
+import { getWinsColorBedwars, getWlrColor, getFkdrColor, formatBedwarsLevel, getModeWinColor, getLossesColor } from './statColors';
 
 const BW_DUELS_MODES = new Set(['BEDWARS_TWO_ONE_DUELS', 'BEDWARS_TWO_ONE_DUELS_RUSH']);
 
@@ -30,24 +32,46 @@ interface RowModel {
   losses: number;
   wlr: number;
   fkdr: number;
+  finalKills: number;
+  finalDeaths: number;
   stars: number;
   nicked: boolean;
   usedOverallFallback: boolean;
   severity: number;
 }
 
-/** Proxy-style prefix: [Duels+] >> */
+interface GameTracker {
+  finalKills: number;
+  finalDeaths: number;
+  bedsBroken: number;
+  bedsLost: number;
+  kills: number;
+  deaths: number;
+  startedAt: number;
+}
+
+interface BedwarsSessionStats {
+  wins: number;
+  losses: number;
+  finalKills: number;
+  finalDeaths: number;
+  bedsBroken: number;
+  bedsLost: number;
+  gamesPlayed: number;
+  winstreak: number;
+  bestWinstreak: number;
+  startedAt: number;
+}
+
 const PREFIX = '§8[§cDuels§4+§8] §8»';
-/** Dark-red bold diamond bullet, same as proxy autoStats */
 const BULLET = ' §4§l¤';
-/** Cyan bold diamond bullet for self-stats */
 const SELF_BULLET = ' §3§l¤';
 
-/** Skull item IDs for GUI */
-const MATERIAL_SKULL = 397;
 const MATERIAL_STAINED_GLASS = 160;
 const MATERIAL_PAPER = 339;
 const MATERIAL_BARRIER = 166;
+const MATERIAL_BOOK = 340;
+const MATERIAL_GOLD_INGOT = 266;
 
 function isBedWarsTitleBanner(flat: string): boolean {
   const s = flat
@@ -61,11 +85,25 @@ function locrawModeToBedwarsApiKey(mode: string): string {
   return mode.trim().toLowerCase();
 }
 
+function formatDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function safeRatio(num: number, den: number): number {
+  return den === 0 ? num : Math.round((num / den) * 100) / 100;
+}
+
 export default class BedwarsPlugin extends Plugin {
   id = 'bedwars';
   name = 'Bedwars Plugin';
   description = 'Official Bedwars plugin for Duels+ proxy';
-  version = '1.3.0';
+  version = '2.0.0';
   author = 'DuelsPlus';
 
   private ctx!: PluginContext;
@@ -85,11 +123,41 @@ export default class BedwarsPlugin extends Plugin {
 
   private debugChat = false;
   private autoRoster = true;
+  private threatAlerts = true;
+  private threatFkdrThreshold = 5;
+  private threatStarsThreshold = 500;
+  private finalKillAlerts = true;
+  private bedBreakAlerts = true;
+  private streakAlerts = true;
+
+  private game: GameTracker | null = null;
+  private session: BedwarsSessionStats = this.freshSession();
+  private lastGameWasVictory: boolean | null = null;
+
+  private freshSession(): BedwarsSessionStats {
+    return {
+      wins: 0, losses: 0, finalKills: 0, finalDeaths: 0,
+      bedsBroken: 0, bedsLost: 0, gamesPlayed: 0,
+      winstreak: 0, bestWinstreak: 0, startedAt: Date.now(),
+    };
+  }
 
   onLoad(ctx: PluginContext): void {
     this.ctx = ctx;
+
     this.debugChat = ctx.storage.get<boolean>('debugChat') ?? false;
     this.autoRoster = ctx.storage.get<boolean>('autoRoster') ?? true;
+    this.threatAlerts = ctx.storage.get<boolean>('threatAlerts') ?? true;
+    this.threatFkdrThreshold = ctx.storage.get<number>('threatFkdrThreshold') ?? 5;
+    this.threatStarsThreshold = ctx.storage.get<number>('threatStarsThreshold') ?? 500;
+    this.finalKillAlerts = ctx.storage.get<boolean>('finalKillAlerts') ?? true;
+    this.bedBreakAlerts = ctx.storage.get<boolean>('bedBreakAlerts') ?? true;
+    this.streakAlerts = ctx.storage.get<boolean>('streakAlerts') ?? true;
+
+    const savedSession = ctx.storage.get<BedwarsSessionStats>('session');
+    if (savedSession && Date.now() - savedSession.startedAt < 6 * 60 * 60 * 1000) {
+      this.session = savedSession;
+    }
 
     ctx.gameModes.register({
       id: 'hypixel-bedwars-queues',
@@ -116,8 +184,6 @@ export default class BedwarsPlugin extends Plugin {
       showHypixelBedwarsStarsInAutoStats: true,
     });
 
-    // --- Event handlers ---
-
     ctx.events.on('game:start', (payload: GameStartPayload) => {
       if (!isHypixelMainBedwars(payload.gametype, payload.mode)) return;
       this.enterBedwarsGame(payload.mode);
@@ -133,18 +199,25 @@ export default class BedwarsPlugin extends Plugin {
       }
     });
 
-    ctx.events.on('game:end', () => this.resetState());
+    ctx.events.on('game:end', (payload: GameEndPayload) => {
+      if (this.inBedwarsGame) {
+        this.onBedwarsGameEnd(payload);
+      }
+      this.resetState();
+    });
     ctx.events.on('game:leave', () => this.resetState());
     ctx.events.on('lobby:join', () => this.resetState());
-
-    // --- Packet listeners ---
 
     ctx.packets.onClientbound('chat', (data) => {
       this.debugChatPacketToConsole(data);
       this.onChatPacket(data);
     });
 
-    // --- Commands ---
+    this.registerCommands();
+  }
+
+  private registerCommands(): void {
+    const ctx = this.ctx;
 
     ctx.commands.register({
       name: 'bwroster',
@@ -170,6 +243,53 @@ export default class BedwarsPlugin extends Plugin {
     });
 
     ctx.commands.register({
+      name: 'bwsettings',
+      description: 'Open Bedwars plugin settings',
+      aliases: ['bws'],
+      usage: '/bwsettings',
+      execute: () => this.openSettingsGUI(),
+    });
+
+    ctx.commands.register({
+      name: 'bwcheck',
+      description: 'Look up a player\'s Bedwars stats',
+      aliases: ['bwc'],
+      usage: '/bwcheck <player>',
+      execute: (args) => {
+        const target = args[0];
+        if (!target) {
+          ctx.client.sendChat(`${PREFIX} §cUsage: /bwcheck <player>`);
+          return;
+        }
+        void this.lookupPlayer(target);
+      },
+    });
+
+    ctx.commands.register({
+      name: 'bwgame',
+      description: 'Show current game stats (FK, FD, beds)',
+      aliases: ['bwg'],
+      usage: '/bwgame',
+      execute: () => this.showGameStats(),
+    });
+
+    ctx.commands.register({
+      name: 'bwsession',
+      description: 'Show Bedwars session stats',
+      aliases: ['bwss'],
+      usage: '/bwsession [reset]',
+      execute: (args) => {
+        if (args[0]?.toLowerCase() === 'reset') {
+          this.session = this.freshSession();
+          this.persistSession();
+          ctx.client.sendChat(`${PREFIX} §aSession stats reset.`);
+          return;
+        }
+        this.showSessionStats();
+      },
+    });
+
+    ctx.commands.register({
       name: 'bwdebugchat',
       description: 'Log Bedwars chat packets to the proxy console',
       usage: '/bwdebugchat [on|off]',
@@ -188,25 +308,197 @@ export default class BedwarsPlugin extends Plugin {
         }
       },
     });
-
-    ctx.commands.register({
-      name: 'bwsettings',
-      description: 'Open Bedwars plugin settings',
-      aliases: ['bws'],
-      usage: '/bwsettings',
-      execute: () => {
-        this.openSettingsGUI();
-      },
-    });
   }
 
-  // ── Settings GUI ──
+  private async lookupPlayer(username: string): Promise<void> {
+    const ctx = this.ctx;
+    ctx.client.sendChat(`${PREFIX} §7Looking up §e${username}§7...`);
+
+    const st = await ctx.players.fetchStatsByUsername(username);
+    if (!st) {
+      ctx.client.sendChat(`${PREFIX} §cPlayer not found or nicked.`);
+      return;
+    }
+
+    const bw = st.bedwars;
+    if (!bw) {
+      ctx.client.sendChat(`${PREFIX} §c${st.displayname} has no Bedwars stats.`);
+      return;
+    }
+
+    const stars = bw.stars ?? 0;
+    const fkdr = safeRatio(bw.finalKills, bw.finalDeaths);
+    const wlr = safeRatio(bw.wins, bw.losses);
+    const starStr = formatBedwarsLevel(stars);
+
+    ctx.client.sendChat(`\n${PREFIX} §6Bedwars Stats §8— §e${st.displayname}`);
+    ctx.client.sendChat(`${BULLET} ${starStr} §7Stars`);
+    ctx.client.sendChat(`${BULLET} §fWins: ${getWinsColorBedwars(bw.wins)} §8| §fLosses: ${getLossesColor(bw.losses)} §8| §fWLR: ${getWlrColor(wlr)}`);
+    ctx.client.sendChat(`${BULLET} §fFK: ${getModeWinColor(bw.finalKills)} §8| §fFD: ${getLossesColor(bw.finalDeaths)} §8| §fFKDR: ${getFkdrColor(fkdr)}`);
+    ctx.client.sendChat(`${BULLET} §fBeds Broken: §a${bw.bedsBroken}`);
+    ctx.client.sendChat('');
+  }
+
+  private showGameStats(): void {
+    const ctx = this.ctx;
+    if (!this.game) {
+      ctx.client.sendChat(`${PREFIX} §cNot in a Bedwars game.`);
+      return;
+    }
+    const g = this.game;
+    const elapsed = formatDuration(Date.now() - g.startedAt);
+    const fkdr = safeRatio(g.finalKills, g.finalDeaths);
+
+    ctx.client.sendChat(`\n${PREFIX} §6Current Game §8(§7${elapsed}§8)`);
+    ctx.client.sendChat(`${BULLET} §fFK: §a${g.finalKills} §8| §fFD: §c${g.finalDeaths} §8| §fFKDR: ${getFkdrColor(fkdr)}`);
+    ctx.client.sendChat(`${BULLET} §fKills: §a${g.kills} §8| §fDeaths: §c${g.deaths}`);
+    ctx.client.sendChat(`${BULLET} §fBeds Broken: §a${g.bedsBroken} §8| §fBeds Lost: §c${g.bedsLost}`);
+    ctx.client.sendChat('');
+  }
+
+  private showSessionStats(): void {
+    const ctx = this.ctx;
+    const s = this.session;
+    if (s.gamesPlayed === 0) {
+      ctx.client.sendChat(`${PREFIX} §cNo Bedwars games played this session.`);
+      return;
+    }
+
+    const duration = formatDuration(Date.now() - s.startedAt);
+    const wlr = safeRatio(s.wins, s.losses);
+    const fkdr = safeRatio(s.finalKills, s.finalDeaths);
+
+    ctx.client.sendChat(`\n${PREFIX} §6Bedwars Session §8(§7${duration}§8)`);
+    ctx.client.sendChat(`${BULLET} §fGames: §e${s.gamesPlayed} §8| §fWins: §a${s.wins} §8| §fLosses: §c${s.losses} §8| §fWLR: ${getWlrColor(wlr)}`);
+    ctx.client.sendChat(`${BULLET} §fFK: §a${s.finalKills} §8| §fFD: §c${s.finalDeaths} §8| §fFKDR: ${getFkdrColor(fkdr)}`);
+    ctx.client.sendChat(`${BULLET} §fBeds Broken: §a${s.bedsBroken} §8| §fBeds Lost: §c${s.bedsLost}`);
+    ctx.client.sendChat(`${BULLET} §fWinstreak: §e${s.winstreak} §8| §fBest: §6${s.bestWinstreak}`);
+    ctx.client.sendChat('');
+  }
+
+  private persistSession(): void {
+    this.ctx.storage.set('session', this.session);
+  }
+
+  private onBedwarsGameEnd(payload: GameEndPayload): void {
+    const s = this.session;
+    s.gamesPlayed++;
+
+    if (this.game) {
+      s.finalKills += this.game.finalKills;
+      s.finalDeaths += this.game.finalDeaths;
+      s.bedsBroken += this.game.bedsBroken;
+      s.bedsLost += this.game.bedsLost;
+    }
+
+    if (payload.result === 'victory') {
+      s.wins++;
+      s.winstreak++;
+      if (s.winstreak > s.bestWinstreak) {
+        s.bestWinstreak = s.winstreak;
+      }
+      this.lastGameWasVictory = true;
+
+      if (this.streakAlerts && s.winstreak > 1 && s.winstreak % 3 === 0) {
+        this.ctx.client.sendTitle(
+          `§6§l${s.winstreak} Winstreak!`,
+          '§eKeep it going!',
+          { fadeIn: 5, stay: 40, fadeOut: 10 },
+        );
+        this.ctx.client.playSound('random.levelup', 1.0, 1.5);
+      }
+    } else if (payload.result === 'defeat') {
+      s.losses++;
+      if (this.streakAlerts && s.winstreak >= 3) {
+        this.ctx.client.sendChat(`${PREFIX} §c${s.winstreak} winstreak ended.`);
+      }
+      s.winstreak = 0;
+      this.lastGameWasVictory = false;
+    }
+
+    this.persistSession();
+  }
+
+  private checkThreats(rows: RowModel[]): void {
+    if (!this.threatAlerts) return;
+    const ctx = this.ctx;
+    const self = ctx.client.username.toLowerCase();
+
+    const threats = rows.filter(
+      (r) =>
+        !r.nicked &&
+        r.username.toLowerCase() !== self &&
+        (r.fkdr >= this.threatFkdrThreshold || r.stars >= this.threatStarsThreshold),
+    );
+
+    if (threats.length === 0) return;
+
+    ctx.client.playSound('note.pling', 1.0, 0.5);
+    ctx.client.sendChat(`${PREFIX} §c§l⚠ ${threats.length} threat${threats.length > 1 ? 's' : ''} detected:`);
+    for (const t of threats) {
+      const star = formatBedwarsLevel(t.stars);
+      const reasons: string[] = [];
+      if (t.fkdr >= this.threatFkdrThreshold) reasons.push(`FKDR §c${t.fkdr.toFixed(2)}`);
+      if (t.stars >= this.threatStarsThreshold) reasons.push(`Stars §c${t.stars}`);
+      ctx.client.sendChat(
+        `  §c▸ ${star} §e${t.username} §8(§7${reasons.join('§8, §7')}§8)`,
+      );
+    }
+  }
+
+  private processBedwarsChat(flat: string): void {
+    if (!this.game) return;
+    const ctx = this.ctx;
+    const self = ctx.client.username;
+
+    if (flat.includes('FINAL KILL')) {
+      if (flat.includes(self) && !flat.startsWith(self)) {
+        this.game.finalKills++;
+        if (this.finalKillAlerts) {
+          ctx.client.playSound('random.orb', 0.8, 1.2);
+          ctx.client.sendActionBar(`§a§lFinal Kill! §7(${this.game.finalKills} FK this game)`);
+        }
+      } else if (flat.startsWith(self)) {
+        this.game.finalDeaths++;
+        if (this.finalKillAlerts) {
+          ctx.client.sendActionBar(`§c§lFinal Death! §7(${this.game.finalDeaths} FD this game)`);
+        }
+      }
+    }
+
+    const killMatch = flat.match(/^(\w+) (?:was .+ by|disconnected\.) ?(\w*)/);
+    if (killMatch && !flat.includes('FINAL KILL')) {
+      if (killMatch[2] === self) {
+        this.game.kills++;
+      } else if (killMatch[1] === self) {
+        this.game.deaths++;
+      }
+    }
+
+    if (flat.includes('BED DESTRUCTION')) {
+      if (flat.includes('Your Bed') || flat.includes('your bed')) {
+        this.game.bedsLost++;
+        if (this.bedBreakAlerts) {
+          ctx.client.playSound('mob.endermen.portal', 1.0, 0.5);
+          ctx.client.sendTitle('', '§c§lYour bed was destroyed!', { fadeIn: 3, stay: 30, fadeOut: 10 });
+        }
+      } else if (flat.includes(self) || flat.includes('you!') || flat.includes('You!')) {
+        this.game.bedsBroken++;
+        if (this.bedBreakAlerts) {
+          ctx.client.playSound('random.levelup', 0.8, 2.0);
+          ctx.client.sendActionBar(`§a§lBed Destroyed! §7(${this.game.bedsBroken} beds this game)`);
+        }
+      } else if (this.bedBreakAlerts) {
+        ctx.client.playSound('note.pling', 0.5, 1.5);
+      }
+    }
+  }
 
   private openSettingsGUI(): void {
     const ctx = this.ctx;
     let gui: PluginChestGUI;
     try {
-      gui = ctx.gui.createChestGUI('§8Bedwars Settings', 3);
+      gui = ctx.gui.createChestGUI('§8Bedwars Settings', 5);
     } catch {
       ctx.client.sendChat(`${PREFIX} §cCould not open settings GUI.`);
       return;
@@ -224,7 +516,7 @@ export default class BedwarsPlugin extends Plugin {
 
     const makeToggle = (isOn: boolean, name: string, desc: string): ReturnType<typeof ctx.gui.createItem> => {
       return ctx.gui.createItem(
-        isOn ? 351 : 352, // lime dye / gray dye
+        isOn ? 351 : 352,
         0,
         `${isOn ? '§a' : '§c'}${name}`,
         [isOn ? '§7Status: §aEnabled' : '§7Status: §cDisabled', '', `§7${desc}`, '', '§eClick to toggle'],
@@ -237,47 +529,87 @@ export default class BedwarsPlugin extends Plugin {
         lore.push(opt === value ? `§a▸ ${opt}` : `§7  ${opt}`);
       }
       lore.push('', '§eClick to cycle');
-      return ctx.gui.createItem(339, 0, `§e${name}: §f${value}`, lore); // paper
+      return ctx.gui.createItem(MATERIAL_PAPER, 0, `§e${name}: §f${value}`, lore);
     };
 
-    const currentPrefix = (ctx.settings.get('statTagsPrefix') as string) || 'None';
-    const currentSuffix = (ctx.settings.get('statTagsSuffix') as string) || 'Wins';
+    const makeThreshold = (value: number, name: string, desc: string, step: number, min: number, max: number): ReturnType<typeof ctx.gui.createItem> => {
+      return ctx.gui.createItem(
+        MATERIAL_GOLD_INGOT, 0,
+        `§e${name}: §f${value}`,
+        [`§7${desc}`, '', `§7Current: §e${value}`, '', '§eLeft-click: +${step}', '§eRight-click: -${step}'],
+      );
+    };
+
+    const setSetting = (key: string, value: unknown): void => {
+      (this as Record<string, unknown>)[key] = value;
+      ctx.storage.set(key, value);
+    };
 
     const updateAll = (): void => {
-      // Slot 10: Auto Roster toggle
-      gui.updateSlot(10, makeToggle(this.autoRoster, 'Auto Roster', 'Show roster when a BW game starts'), (_, button) => {
-        this.autoRoster = !this.autoRoster;
-        ctx.storage.set('autoRoster', this.autoRoster);
+      gui.updateSlot(10, makeToggle(this.autoRoster, 'Auto Roster', 'Print roster on game start'), () => {
+        setSetting('autoRoster', !this.autoRoster);
         updateAll();
       });
 
-      // Slot 12: Stat Tag Prefix
       const prefix = (ctx.settings.get('statTagsPrefix') as string) || 'None';
-      gui.updateSlot(12, makeCycle(prefix, 'Tag Prefix', 'Stat before player name', BW_STAT_OPTIONS), () => {
+      gui.updateSlot(11, makeCycle(prefix, 'Tag Prefix', 'Stat before player name', BW_STAT_OPTIONS), () => {
         const cur = (ctx.settings.get('statTagsPrefix') as string) || 'None';
-        const next = cycleNext(cur as BwStat, BW_STAT_OPTIONS);
-        ctx.settings.set('statTagsPrefix', next);
+        ctx.settings.set('statTagsPrefix', cycleNext(cur as BwStat, BW_STAT_OPTIONS));
         updateAll();
       });
 
-      // Slot 13: Stat Tag Suffix
       const suffix = (ctx.settings.get('statTagsSuffix') as string) || 'Wins';
-      gui.updateSlot(13, makeCycle(suffix, 'Tag Suffix', 'Stat after player name', BW_STAT_OPTIONS), () => {
+      gui.updateSlot(12, makeCycle(suffix, 'Tag Suffix', 'Stat after player name', BW_STAT_OPTIONS), () => {
         const cur = (ctx.settings.get('statTagsSuffix') as string) || 'Wins';
-        const next = cycleNext(cur as BwStat, BW_STAT_OPTIONS);
-        ctx.settings.set('statTagsSuffix', next);
+        ctx.settings.set('statTagsSuffix', cycleNext(cur as BwStat, BW_STAT_OPTIONS));
         updateAll();
       });
 
-      // Slot 15: Debug Chat toggle
-      gui.updateSlot(15, makeToggle(this.debugChat, 'Debug Chat', 'Log BW chat packets to console'), () => {
-        this.debugChat = !this.debugChat;
-        ctx.storage.set('debugChat', this.debugChat);
+      gui.updateSlot(19, makeToggle(this.threatAlerts, 'Threat Alerts', 'Warn about high-stat players'), () => {
+        setSetting('threatAlerts', !this.threatAlerts);
         updateAll();
       });
 
-      // Slot 22: Close button
-      gui.updateSlot(22, ctx.gui.createItem(MATERIAL_BARRIER, 0, '§cClose', ['§7Close this menu']), () => {
+      gui.updateSlot(20, makeThreshold(this.threatFkdrThreshold, 'Threat FKDR', 'Min FKDR for threat alert', 1, 1, 50), (_, button) => {
+        let v = this.threatFkdrThreshold;
+        v = button === 'left' ? Math.min(v + 1, 50) : Math.max(v - 1, 1);
+        setSetting('threatFkdrThreshold', v);
+        updateAll();
+      });
+
+      gui.updateSlot(21, makeThreshold(this.threatStarsThreshold, 'Threat Stars', 'Min stars for threat alert', 100, 100, 5000), (_, button) => {
+        let v = this.threatStarsThreshold;
+        v = button === 'left' ? Math.min(v + 100, 5000) : Math.max(v - 100, 100);
+        setSetting('threatStarsThreshold', v);
+        updateAll();
+      });
+
+      gui.updateSlot(28, makeToggle(this.finalKillAlerts, 'FK Alerts', 'Sound + action bar on final kills'), () => {
+        setSetting('finalKillAlerts', !this.finalKillAlerts);
+        updateAll();
+      });
+
+      gui.updateSlot(29, makeToggle(this.bedBreakAlerts, 'Bed Alerts', 'Sound + title on bed breaks'), () => {
+        setSetting('bedBreakAlerts', !this.bedBreakAlerts);
+        updateAll();
+      });
+
+      gui.updateSlot(30, makeToggle(this.streakAlerts, 'Streak Alerts', 'Title on winstreak milestones'), () => {
+        setSetting('streakAlerts', !this.streakAlerts);
+        updateAll();
+      });
+
+      gui.updateSlot(31, makeToggle(this.debugChat, 'Debug Chat', 'Log BW chat to console'), () => {
+        setSetting('debugChat', !this.debugChat);
+        updateAll();
+      });
+
+      gui.updateSlot(40, ctx.gui.createItem(MATERIAL_BOOK, 0, '§bSession Stats', ['§7View your BW session', '', '§eClick to view']), () => {
+        gui.close();
+        this.showSessionStats();
+      });
+
+      gui.updateSlot(44, ctx.gui.createItem(MATERIAL_BARRIER, 0, '§cClose', ['§7Close this menu']), () => {
         gui.close();
       });
     };
@@ -295,12 +627,19 @@ export default class BedwarsPlugin extends Plugin {
     this.inBedwarsGame = true;
     this.collectingEarlyChats = true;
 
+    this.game = {
+      finalKills: 0, finalDeaths: 0,
+      bedsBroken: 0, bedsLost: 0,
+      kills: 0, deaths: 0,
+      startedAt: Date.now(),
+    };
+
     this.clearFallbackTimeout();
     if (this.autoRoster) {
       this.fallbackRosterTimeout = this.ctx.scheduler.setTimeout(() => {
         this.fallbackRosterTimeout = null;
         if (this.inBedwarsGame && !this.bannerSeen && this.rosterPrintedForServer === null) {
-          this.ctx.logger.debug('[Bedwars] Banner not detected — fallback /who trigger');
+          this.ctx.logger.debug('[Bedwars] Banner not detected, fallback /who trigger');
           this.requestWhoAndPrintSoon('fallback');
         }
       }, 3500);
@@ -314,6 +653,8 @@ export default class BedwarsPlugin extends Plugin {
 
     if (this.inBedwarsGame) {
       this.captureWhoResponse(raw);
+      const flat = this.extractTextFromChatJson(raw);
+      this.processBedwarsChat(flat);
     }
 
     if (this.collectingEarlyChats && !this.inBedwarsGame) {
@@ -337,7 +678,7 @@ export default class BedwarsPlugin extends Plugin {
 
     this.bannerSeen = true;
     this.clearFallbackTimeout();
-    this.ctx.logger.debug('[Bedwars] Banner detected — sending /who');
+    this.ctx.logger.debug('[Bedwars] Banner detected, sending /who');
     this.requestWhoAndPrintSoon('banner');
   }
 
@@ -474,14 +815,14 @@ export default class BedwarsPlugin extends Plugin {
 
   private buildRow(
     username: string,
-    st: Awaited<ReturnType<typeof this.fetchStatsForUsername>>,
+    st: HypixelPlayerStats | null,
     modeKey: string,
   ): RowModel {
     const display = st?.displayname ?? username;
     if (!st) {
       return {
         username: display,
-        wins: 0, losses: 0, wlr: 0, fkdr: 0, stars: 0,
+        wins: 0, losses: 0, wlr: 0, fkdr: 0, finalKills: 0, finalDeaths: 0, stars: 0,
         nicked: true, usedOverallFallback: false, severity: -1,
       };
     }
@@ -505,19 +846,17 @@ export default class BedwarsPlugin extends Plugin {
 
     const wins = usedOverallFallback ? overallWins : extracted.winsInMode;
     const losses = usedOverallFallback ? overallLosses : extracted.lossesInMode;
-    const wlr = losses === 0 ? wins : Math.round((wins / losses) * 100) / 100;
+    const wlr = safeRatio(wins, losses);
     const fd = usedOverallFallback ? overallFd : extracted.finalDeathsInMode;
     const fk = usedOverallFallback ? overallFk : extracted.finalKillsInMode;
-    const fkdr = fd === 0 ? fk : Math.round((fk / fd) * 100) / 100;
+    const fkdr = safeRatio(fk, fd);
     const stars = st?.bedwars?.stars ?? 0;
     const severity = wlr * 10_000 + fkdr * 100 + stars;
     return {
-      username: display, wins, losses, wlr, fkdr, stars,
+      username: display, wins, losses, wlr, fkdr, finalKills: fk, finalDeaths: fd, stars,
       nicked: false, usedOverallFallback, severity,
     };
   }
-
-  // ── Chat roster (always-on) ──
 
   private async printRosterFromWho(modeHint: string): Promise<void> {
     if (this.rosterBusy) return;
@@ -535,10 +874,8 @@ export default class BedwarsPlugin extends Plugin {
       const modeKey = locrawModeToBedwarsApiKey(mode);
       const self = ctx.client.username.toLowerCase();
 
-      // Header
       ctx.client.sendChat(`\n${PREFIX} §6Bedwars Roster §8(§f${players.length} §7players§8)`);
 
-      // Fetch all player stats in parallel
       const results = await Promise.allSettled(
         players.map(async (username) => {
           const st = await this.fetchStatsForUsername(username);
@@ -565,7 +902,6 @@ export default class BedwarsPlugin extends Plugin {
           continue;
         }
 
-        // Matching proxy style: bullet [star] Name W: val, WLR: val, FKDR: val
         const star = formatBedwarsLevel(r.stars);
         ctx.client.sendChat(
           `${bullet} ${star} §e${r.username} §fW: ${getWinsColorBedwars(r.wins)}§f, §fWLR: ${getWlrColor(r.wlr)}§f, §fFKDR: ${getFkdrColor(r.fkdr)}`,
@@ -579,14 +915,13 @@ export default class BedwarsPlugin extends Plugin {
       ctx.client.sendChat('');
 
       this.rosterPrintedForServer = server;
+      this.checkThreats(rows);
     } catch (e) {
       ctx.logger.warn('Bedwars roster failed', e);
     } finally {
       this.rosterBusy = false;
     }
   }
-
-  // ── Chest GUI roster ──
 
   private openRosterGUI(rows: RowModel[]): void {
     const ctx = this.ctx;
@@ -620,14 +955,13 @@ export default class BedwarsPlugin extends Plugin {
       const wlrStr = r.wlr.toFixed(2).replace(/\.00$/, '');
       const fkdrStr = r.fkdr.toFixed(2).replace(/\.00$/, '');
 
-      // Colored glass pane based on threat level
       let paneColor: number;
-      if (isSelf) paneColor = 3; // light blue
-      else if (r.fkdr >= 10) paneColor = 14; // red
-      else if (r.fkdr >= 5) paneColor = 1; // orange
-      else if (r.fkdr >= 2) paneColor = 4; // yellow
-      else if (r.fkdr >= 1) paneColor = 5; // lime
-      else paneColor = 0; // white
+      if (isSelf) paneColor = 3;
+      else if (r.fkdr >= 10) paneColor = 14;
+      else if (r.fkdr >= 5) paneColor = 1;
+      else if (r.fkdr >= 2) paneColor = 4;
+      else if (r.fkdr >= 1) paneColor = 5;
+      else paneColor = 0;
 
       const lore: string[] = [
         `§7Stars: §f${starStr}`,
@@ -636,10 +970,15 @@ export default class BedwarsPlugin extends Plugin {
         `§7Losses: §c${r.losses}`,
         `§7WLR: §b${wlrStr}`,
         '',
+        `§7Final Kills: §a${r.finalKills}`,
+        `§7Final Deaths: §c${r.finalDeaths}`,
         `§7FKDR: §e${fkdrStr}`,
       ];
       if (r.usedOverallFallback) {
         lore.push('', '§8Overall stats (no mode data)');
+      }
+      if (!isSelf && (r.fkdr >= this.threatFkdrThreshold || r.stars >= this.threatStarsThreshold)) {
+        lore.push('', '§c⚠ Threat');
       }
 
       const item = ctx.gui.createItem(
@@ -661,11 +1000,13 @@ export default class BedwarsPlugin extends Plugin {
     this.whoNames.clear();
     this.earlyChats.length = 0;
     this.collectingEarlyChats = false;
+    this.game = null;
     this.clearRosterTimeout();
     this.clearFallbackTimeout();
   }
 
   onDisable(): void {
     this.resetState();
+    this.persistSession();
   }
 }
