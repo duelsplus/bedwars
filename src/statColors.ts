@@ -11,6 +11,82 @@ function formatAlternating(str: string, colors: string[]): string {
   return formatted;
 }
 
+export type WinstreakType = 'current' | 'best';
+
+export function getWinstreakColor(winstreak: number, type: WinstreakType): string {
+  const ws = parseFloat(String(winstreak)) || 0;
+  const wsStr = ws.toString();
+  const rainbowColors = ['§c', '§e', '§a', '§b', '§3', '§9', '§d', '§5'];
+  const cyanBlueColors = ['§b', '§3'];
+
+  if (type === 'current') {
+    if (ws >= 1000) return formatAlternating(wsStr, rainbowColors);
+    if (ws >= 750) return `§c${wsStr}`;
+    if (ws >= 500) return `§d${wsStr}`;
+    if (ws >= 250) return formatAlternating(wsStr, cyanBlueColors);
+    if (ws >= 200) return `§5${wsStr}`;
+    if (ws >= 150) return `§e${wsStr}`;
+    if (ws >= 100) return `§4${wsStr}`;
+    if (ws >= 50) return `§2${wsStr}`;
+    if (ws >= 20) return `§b${wsStr}`;
+    if (ws >= 10) return `§6${wsStr}`;
+    if (ws >= 5) return `§f${wsStr}`;
+    return `§8${wsStr}`;
+  }
+
+  // 'best' type
+  if (ws >= 1000) return formatAlternating(wsStr, rainbowColors);
+  if (ws >= 500) return `§c${wsStr}`;
+  if (ws >= 250) return formatAlternating(wsStr, cyanBlueColors);
+  if (ws >= 200) return `§5${wsStr}`;
+  if (ws >= 150) return `§e${wsStr}`;
+  if (ws >= 100) return `§4${wsStr}`;
+  if (ws >= 50) return `§2${wsStr}`;
+  if (ws >= 20) return `§b${wsStr}`;
+  if (ws >= 10) return `§6${wsStr}`;
+  if (ws >= 5) return `§f${wsStr}`;
+  return `§8${wsStr}`;
+}
+
+/** Bedwars star color — single prestige color for inline stat display */
+export function getStarsColor(stars: number): string {
+  const s = String(Math.floor(stars));
+  if (stars >= 3000) return `§e${s}`;
+  if (stars >= 2000) return `§b${s}`;
+  if (stars >= 1000) return `§c${s}`;
+  if (stars >= 900) return `§5${s}`;
+  if (stars >= 800) return `§9${s}`;
+  if (stars >= 700) return `§d${s}`;
+  if (stars >= 600) return `§4${s}`;
+  if (stars >= 500) return `§3${s}`;
+  if (stars >= 400) return `§2${s}`;
+  if (stars >= 300) return `§b${s}`;
+  if (stars >= 200) return `§6${s}`;
+  if (stars >= 100) return `§f${s}`;
+  return `§7${s}`;
+}
+
+export function getBblrColor(bblr: number): string {
+  const bblrNum = parseFloat(String(bblr)) || 0;
+  const bblrStr = bblrNum.toFixed(2).replace(/\.00$/, '');
+
+  if (bblrNum >= 20) return `§5${bblrStr}`;
+  if (bblrNum >= 10) return `§d${bblrStr}`;
+  if (bblrNum >= 6) return `§4${bblrStr}`;
+  if (bblrNum >= 4) return `§c${bblrStr}`;
+  if (bblrNum >= 2) return `§6${bblrStr}`;
+  if (bblrNum >= 1.4) return `§e${bblrStr}`;
+  if (bblrNum >= 1) return `§2${bblrStr}`;
+  if (bblrNum >= 0.6) return `§a${bblrStr}`;
+  if (bblrNum >= 0.2) return `§7${bblrStr}`;
+  return `§8${bblrStr}`;
+}
+
+/** Color final kills using the same scale as mode wins */
+export function getFinalKillsColor(fk: number): string {
+  return getModeWinColor(fk);
+}
+
 export function getModeWinColor(wins: number): string {
   const winsStr = wins.toString();
   const cyanBlueColors = ['§b', '§3'];

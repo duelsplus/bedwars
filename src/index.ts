@@ -9,7 +9,7 @@ import {
 } from '@duelsplus/plugin-api';
 
 import { getBedwarsStats } from './hypixelBedwarsMode';
-import { getWinsColorBedwars, getWlrColor, getFkdrColor, formatBedwarsLevel, getModeWinColor, getLossesColor } from './statColors';
+import { getWinsColorBedwars, getWlrColor, getFkdrColor, formatBedwarsLevel, getModeWinColor, getLossesColor, getWinstreakColor, getBblrColor, getStarsColor, getFinalKillsColor } from './statColors';
 
 const BW_DUELS_MODES = new Set(['BEDWARS_TWO_ONE_DUELS', 'BEDWARS_TWO_ONE_DUELS_RUSH']);
 
@@ -66,6 +66,7 @@ interface BedwarsSessionStats {
 const PREFIX = '§8[§cDuels§4+§8] §8»';
 const BULLET = ' §4§l¤';
 const SELF_BULLET = ' §3§l¤';
+const DIVIDER = '§8' + '═'.repeat(35);
 
 const MATERIAL_STAINED_GLASS = 160;
 const MATERIAL_PAPER = 339;
@@ -329,14 +330,17 @@ export default class BedwarsPlugin extends Plugin {
     const stars = bw.stars ?? 0;
     const fkdr = safeRatio(bw.finalKills, bw.finalDeaths);
     const wlr = safeRatio(bw.wins, bw.losses);
+    const bblr = safeRatio(bw.bedsBroken, bw.losses);
     const starStr = formatBedwarsLevel(stars);
 
-    ctx.client.sendChat(`\n${PREFIX} §6Bedwars Stats §8— §e${st.displayname}`);
+    ctx.client.sendChat(`\n${DIVIDER}`);
+    ctx.client.sendChat(`${PREFIX} §6Bedwars Stats §8— §e${st.displayname}`);
+    ctx.client.sendChat(`${DIVIDER}`);
     ctx.client.sendChat(`${BULLET} ${starStr} §7Stars`);
-    ctx.client.sendChat(`${BULLET} §fWins: ${getWinsColorBedwars(bw.wins)} §8| §fLosses: ${getLossesColor(bw.losses)} §8| §fWLR: ${getWlrColor(wlr)}`);
-    ctx.client.sendChat(`${BULLET} §fFK: ${getModeWinColor(bw.finalKills)} §8| §fFD: ${getLossesColor(bw.finalDeaths)} §8| §fFKDR: ${getFkdrColor(fkdr)}`);
-    ctx.client.sendChat(`${BULLET} §fBeds Broken: §a${bw.bedsBroken}`);
-    ctx.client.sendChat('');
+    ctx.client.sendChat(`${BULLET} §fW: ${getWinsColorBedwars(bw.wins)}§f, §fL: ${getLossesColor(bw.losses)}§f, §fWLR: ${getWlrColor(wlr)}`);
+    ctx.client.sendChat(`${BULLET} §fFK: ${getFinalKillsColor(bw.finalKills)}§f, §fFD: ${getLossesColor(bw.finalDeaths)}§f, §fFKDR: ${getFkdrColor(fkdr)}`);
+    ctx.client.sendChat(`${BULLET} §fBeds: §a${bw.bedsBroken}§f, §fBBLR: ${getBblrColor(bblr)}`);
+    ctx.client.sendChat(`${DIVIDER}`);
   }
 
   private showGameStats(): void {
@@ -348,12 +352,15 @@ export default class BedwarsPlugin extends Plugin {
     const g = this.game;
     const elapsed = formatDuration(Date.now() - g.startedAt);
     const fkdr = safeRatio(g.finalKills, g.finalDeaths);
+    const kdr = safeRatio(g.kills, g.deaths);
 
-    ctx.client.sendChat(`\n${PREFIX} §6Current Game §8(§7${elapsed}§8)`);
-    ctx.client.sendChat(`${BULLET} §fFK: §a${g.finalKills} §8| §fFD: §c${g.finalDeaths} §8| §fFKDR: ${getFkdrColor(fkdr)}`);
-    ctx.client.sendChat(`${BULLET} §fKills: §a${g.kills} §8| §fDeaths: §c${g.deaths}`);
-    ctx.client.sendChat(`${BULLET} §fBeds Broken: §a${g.bedsBroken} §8| §fBeds Lost: §c${g.bedsLost}`);
-    ctx.client.sendChat('');
+    ctx.client.sendChat(`\n${DIVIDER}`);
+    ctx.client.sendChat(`${PREFIX} §6Current Game §8(§7${elapsed}§8)`);
+    ctx.client.sendChat(`${DIVIDER}`);
+    ctx.client.sendChat(`${BULLET} §fFK: ${getFinalKillsColor(g.finalKills)}§f, §fFD: ${getLossesColor(g.finalDeaths)}§f, §fFKDR: ${getFkdrColor(fkdr)}`);
+    ctx.client.sendChat(`${BULLET} §fKills: ${getModeWinColor(g.kills)}§f, §fDeaths: ${getLossesColor(g.deaths)}§f, §fKDR: ${getWlrColor(kdr)}`);
+    ctx.client.sendChat(`${BULLET} §fBeds Broken: §a${g.bedsBroken}§f, §fBeds Lost: §c${g.bedsLost}`);
+    ctx.client.sendChat(`${DIVIDER}`);
   }
 
   private showSessionStats(): void {
@@ -367,13 +374,16 @@ export default class BedwarsPlugin extends Plugin {
     const duration = formatDuration(Date.now() - s.startedAt);
     const wlr = safeRatio(s.wins, s.losses);
     const fkdr = safeRatio(s.finalKills, s.finalDeaths);
+    const bblr = safeRatio(s.bedsBroken, s.bedsLost);
 
-    ctx.client.sendChat(`\n${PREFIX} §6Bedwars Session §8(§7${duration}§8)`);
-    ctx.client.sendChat(`${BULLET} §fGames: §e${s.gamesPlayed} §8| §fWins: §a${s.wins} §8| §fLosses: §c${s.losses} §8| §fWLR: ${getWlrColor(wlr)}`);
-    ctx.client.sendChat(`${BULLET} §fFK: §a${s.finalKills} §8| §fFD: §c${s.finalDeaths} §8| §fFKDR: ${getFkdrColor(fkdr)}`);
-    ctx.client.sendChat(`${BULLET} §fBeds Broken: §a${s.bedsBroken} §8| §fBeds Lost: §c${s.bedsLost}`);
-    ctx.client.sendChat(`${BULLET} §fWinstreak: §e${s.winstreak} §8| §fBest: §6${s.bestWinstreak}`);
-    ctx.client.sendChat('');
+    ctx.client.sendChat(`\n${DIVIDER}`);
+    ctx.client.sendChat(`${PREFIX} §6Bedwars Session §8(§7${duration}§8)`);
+    ctx.client.sendChat(`${DIVIDER}`);
+    ctx.client.sendChat(`${BULLET} §fGames: §e${s.gamesPlayed}§f, §fW: ${getWinsColorBedwars(s.wins)}§f, §fL: ${getLossesColor(s.losses)}§f, §fWLR: ${getWlrColor(wlr)}`);
+    ctx.client.sendChat(`${BULLET} §fFK: ${getFinalKillsColor(s.finalKills)}§f, §fFD: ${getLossesColor(s.finalDeaths)}§f, §fFKDR: ${getFkdrColor(fkdr)}`);
+    ctx.client.sendChat(`${BULLET} §fBeds: §a${s.bedsBroken}§f, §fLost: §c${s.bedsLost}§f, §fBBLR: ${getBblrColor(bblr)}`);
+    ctx.client.sendChat(`${BULLET} §fCWS: ${getWinstreakColor(s.winstreak, 'current')}§f, §fBest: ${getWinstreakColor(s.bestWinstreak, 'best')}`);
+    ctx.client.sendChat(`${DIVIDER}`);
   }
 
   private persistSession(): void {
@@ -410,7 +420,7 @@ export default class BedwarsPlugin extends Plugin {
     } else if (payload.result === 'defeat') {
       s.losses++;
       if (this.streakAlerts && s.winstreak >= 3) {
-        this.ctx.client.sendChat(`${PREFIX} §c${s.winstreak} winstreak ended.`);
+        this.ctx.client.sendChat(`${PREFIX} §c${s.winstreak} winstreak ended. §8(§fWLR: ${getWlrColor(safeRatio(s.wins, s.losses))}§8)`);
       }
       s.winstreak = 0;
       this.lastGameWasVictory = false;
@@ -434,14 +444,14 @@ export default class BedwarsPlugin extends Plugin {
     if (threats.length === 0) return;
 
     ctx.client.playSound('note.pling', 1.0, 0.5);
-    ctx.client.sendChat(`${PREFIX} §c§l⚠ ${threats.length} threat${threats.length > 1 ? 's' : ''} detected:`);
+    ctx.client.sendChat(`${PREFIX} §c§l⚠ §r§c${threats.length} threat${threats.length > 1 ? 's' : ''} detected:`);
     for (const t of threats) {
       const star = formatBedwarsLevel(t.stars);
       const reasons: string[] = [];
-      if (t.fkdr >= this.threatFkdrThreshold) reasons.push(`FKDR §c${t.fkdr.toFixed(2)}`);
-      if (t.stars >= this.threatStarsThreshold) reasons.push(`Stars §c${t.stars}`);
+      if (t.fkdr >= this.threatFkdrThreshold) reasons.push(`§fFKDR: ${getFkdrColor(t.fkdr)}`);
+      if (t.stars >= this.threatStarsThreshold) reasons.push(`§fStars: ${getStarsColor(t.stars)}`);
       ctx.client.sendChat(
-        `  §c▸ ${star} §e${t.username} §8(§7${reasons.join('§8, §7')}§8)`,
+        `  §c▸ ${star} §e${t.username} §8(${reasons.join('§8, ')}§8)`,
       );
     }
   }
@@ -498,7 +508,7 @@ export default class BedwarsPlugin extends Plugin {
     const ctx = this.ctx;
     let gui: PluginChestGUI;
     try {
-      gui = ctx.gui.createChestGUI('§8Bedwars Settings', 5);
+      gui = ctx.gui.createChestGUI('§cDuels§4+ §8» §fBedwars Settings', 5);
     } catch {
       ctx.client.sendChat(`${PREFIX} §cCould not open settings GUI.`);
       return;
@@ -874,7 +884,9 @@ export default class BedwarsPlugin extends Plugin {
       const modeKey = locrawModeToBedwarsApiKey(mode);
       const self = ctx.client.username.toLowerCase();
 
-      ctx.client.sendChat(`\n${PREFIX} §6Bedwars Roster §8(§f${players.length} §7players§8)`);
+      ctx.client.sendChat(`\n${DIVIDER}`);
+      ctx.client.sendChat(`${PREFIX} §6Bedwars Roster §8(§f${players.length} §7players§8)`);
+      ctx.client.sendChat(`${DIVIDER}`);
 
       const results = await Promise.allSettled(
         players.map(async (username) => {
@@ -910,9 +922,9 @@ export default class BedwarsPlugin extends Plugin {
 
       const nickCount = rows.filter((r) => r.nicked).length;
       if (nickCount > 0) {
-        ctx.client.sendChat(`${PREFIX} §7${nickCount} nicked`);
+        ctx.client.sendChat(`${BULLET} §7${nickCount} nicked player${nickCount > 1 ? 's' : ''}`);
       }
-      ctx.client.sendChat('');
+      ctx.client.sendChat(`${DIVIDER}`);
 
       this.rosterPrintedForServer = server;
       this.checkThreats(rows);
@@ -930,7 +942,7 @@ export default class BedwarsPlugin extends Plugin {
 
     let gui: PluginChestGUI;
     try {
-      gui = ctx.gui.createChestGUI(`§8Bedwars Roster §7(${rows.length})`, guiRows);
+      gui = ctx.gui.createChestGUI(`§cDuels§4+ §8» §fBedwars Roster §7(${rows.length})`, guiRows);
     } catch {
       ctx.client.sendChat(`${PREFIX} §cCould not open GUI.`);
       return;
@@ -951,10 +963,6 @@ export default class BedwarsPlugin extends Plugin {
         continue;
       }
 
-      const starStr = this.stripFormatting(formatBedwarsLevel(r.stars));
-      const wlrStr = r.wlr.toFixed(2).replace(/\.00$/, '');
-      const fkdrStr = r.fkdr.toFixed(2).replace(/\.00$/, '');
-
       let paneColor: number;
       if (isSelf) paneColor = 3;
       else if (r.fkdr >= 10) paneColor = 14;
@@ -964,21 +972,21 @@ export default class BedwarsPlugin extends Plugin {
       else paneColor = 0;
 
       const lore: string[] = [
-        `§7Stars: §f${starStr}`,
+        `§7Stars: ${getStarsColor(r.stars)}`,
         '',
-        `§7Wins: §a${r.wins}`,
-        `§7Losses: §c${r.losses}`,
-        `§7WLR: §b${wlrStr}`,
+        `§7Wins: ${getWinsColorBedwars(r.wins)}`,
+        `§7Losses: ${getLossesColor(r.losses)}`,
+        `§7WLR: ${getWlrColor(r.wlr)}`,
         '',
-        `§7Final Kills: §a${r.finalKills}`,
-        `§7Final Deaths: §c${r.finalDeaths}`,
-        `§7FKDR: §e${fkdrStr}`,
+        `§7Final Kills: ${getFinalKillsColor(r.finalKills)}`,
+        `§7Final Deaths: ${getLossesColor(r.finalDeaths)}`,
+        `§7FKDR: ${getFkdrColor(r.fkdr)}`,
       ];
       if (r.usedOverallFallback) {
         lore.push('', '§8Overall stats (no mode data)');
       }
       if (!isSelf && (r.fkdr >= this.threatFkdrThreshold || r.stars >= this.threatStarsThreshold)) {
-        lore.push('', '§c⚠ Threat');
+        lore.push('', '§c§l⚠ §r§cThreat');
       }
 
       const item = ctx.gui.createItem(
