@@ -137,12 +137,8 @@ export default class BedwarsPlugin extends Plugin {
   private session: BedwarsSessionStats = this.freshSession();
   private lastGameWasVictory: boolean | null = null;
 
-  /**
-   * Last Bed Wars status derived from the sidebar scoreboard. Used to detect
-   * lobby↔pregame↔ingame transitions as a second signal on top of the
-   * event-driven game:start / locraw:update flow (which occasionally misses
-   * back-to-back games of the same mode).
-   */
+  // Last sidebar phase. Backup for game:start / locraw:update, which
+  // sometimes miss back-to-back games of the same mode.
   private lastSidebarStatus: BedWarsStatus = BedWarsStatus.NotInBedWars;
   private sidebarPollHandle: number | null = null;
 
@@ -225,9 +221,8 @@ export default class BedwarsPlugin extends Plugin {
       this.onChatPacket(data);
     });
 
-    // Sidebar-scoreboard-based phase detection (additive to event-driven logic).
-    // Catches transitions the event system can miss — e.g. back-to-back games
-    // where game:end doesn't fire or locraw:update arrives before we've reset.
+    // Sidebar poll. Covers cases where game:end never fires or
+    // locraw:update arrives before we've reset.
     this.sidebarPollHandle = ctx.scheduler.setInterval(() => {
       this.pollSidebarState();
     }, 1000);
@@ -317,13 +312,13 @@ export default class BedwarsPlugin extends Plugin {
         if (sub === 'on') {
           this.debugChat = true;
           ctx.storage.set('debugChat', true);
-          console.log('[Bedwars] chat packet debug ON');
+          console.log('[Bedwars plugin debug uwu] chat packet debug ON');
         } else if (sub === 'off') {
           this.debugChat = false;
           ctx.storage.set('debugChat', false);
-          console.log('[Bedwars] chat packet debug OFF');
+          console.log('[Bedwars plugin debug uwu] chat packet debug OFF');
         } else {
-          console.log(`[Bedwars] chat debug: ${this.debugChat ? 'ON' : 'OFF'}`);
+          console.log(`[Bedwars plugin debug uwu] chat debug: ${this.debugChat ? 'ON' : 'OFF'}`);
         }
       },
     });
@@ -646,41 +641,31 @@ export default class BedwarsPlugin extends Plugin {
     gui.open();
   }
 
-  /**
-   * Sidebar-scoreboard-based state machine. The sidebar is the *primary*
-   * driver of game-state transitions in this plugin — it has precedence over
-   * the event system (game:start, game:end, locraw:update) because the
-   * sidebar changes are tied directly to what Hypixel is showing on screen
-   * and reliably reflect the current phase even when events misfire or fire
-   * out of order.
-   *
-   * State mapping:
-   * - Sidebar in NotInBedWars / Lobby → we must NOT be tracking a BW game.
-   *   If we are, reset per-game state (so `/bwgame` and nametag stats won't
-   *   show stale data from a prior match).
-   * - Sidebar in Pregame → we should be tracking this server+mode. If not
-   *   (or if it's a new server), call enterBedwarsGame to init this.game.
-   *   Skip the 3.5s /who fallback timer — pregame has no committed roster.
-   * - Sidebar in InGame → we should be tracking this server+mode. If not,
-   *   initialize it. On first InGame tick (prev !== InGame), fire /who to
-   *   print the roster.
-   *
-   * Event handlers (game:start, locraw:update, game:end, lobby:join) still
-   * run — they act as an additional trigger, but their effects are now
-   * mostly redundant to this loop. Where they disagree with the sidebar, the
-   * next tick of this poller reconciles state back to what the sidebar says.
-   */
+  // TY DESSSSSS
+  //
+  // Sidebar-driven state machine. This is the primary source of phase
+  // transitions; the event system (game:start, game:end, locraw:update)
+  // runs alongside but loses to the sidebar on disagreement, since the
+  // sidebar tracks what Hypixel is actually showing on screen.
+  //
+  // NotInBedWars / Lobby: clear any per-game state we still have.
+  // Pregame: make sure we're tracking this server+mode. No /who fallback
+  // while in queue; the roster isn't committed yet.
+  // InGame: make sure we're tracking this server+mode. On the first tick
+  // into InGame, fire /who to print the roster.
+  //
+  // Events still run and still trigger transitions. The next poll tick
+  // reconciles anything they got wrong.
   private pollSidebarState(): void {
-    // Defensive guard: if we're running against an older proxy that doesn't
-    // implement `getSidebar()`, disable the poller permanently instead of
-    // spamming TypeErrors every second.
+    // Older proxies don't implement getSidebar(). Kill the poller so we
+    // don't throw every second.
     const sb = this.ctx.scoreboard as { getSidebar?: () => unknown };
     if (typeof sb.getSidebar !== 'function') {
       if (this.sidebarPollHandle !== null) {
         this.ctx.scheduler.clearInterval(this.sidebarPollHandle);
         this.sidebarPollHandle = null;
         this.ctx.logger.warn(
-          '[Bedwars] ctx.scoreboard.getSidebar unavailable; sidebar phase detection disabled. Update the proxy to enable it.',
+          '[Bedwars plugin debug uwu] ctx.scoreboard.getSidebar unavailable; sidebar phase detection disabled. Update the proxy to enable it.',
         );
       }
       return;
@@ -691,63 +676,57 @@ export default class BedwarsPlugin extends Plugin {
     const prev = this.lastSidebarStatus;
     this.lastSidebarStatus = status;
 
-    // Case 1: Sidebar says we're NOT in a BedWars match (either not in BW at
-    // all or in the main lobby). If we still think we're tracking a game,
-    // that's stale — clear it so /bwgame, nametag stats, and other per-game
-    // state don't leak into the next match.
+    // Not in a BW match. Clear any tracking so stale per-game data
+    // doesn't bleed into /bwgame or nametags next game.
     if (status === BedWarsStatus.NotInBedWars || status === BedWarsStatus.Lobby) {
       if (this.inBedwarsGame) {
         this.ctx.logger.debug(
-          `[Bedwars] Sidebar reports ${status === BedWarsStatus.Lobby ? 'Lobby' : 'NotInBedWars'}; resetting per-game state`,
+          `[Bedwars plugin debug uwu] Sidebar reports ${status === BedWarsStatus.Lobby ? 'Lobby' : 'NotInBedWars'}; resetting per-game state`,
         );
         this.resetState();
       }
       return;
     }
 
-    // Case 2: Sidebar says we're in Pregame or InGame. Reconcile tracked
-    // server+mode with what locraw currently reports.
+    // In Pregame or InGame. Reconcile server+mode against locraw.
     const server = this.ctx.gameState.locraw.server ?? null;
     const mode = this.ctx.gameState.currentMode ?? this.currentMode;
 
-    // We can't fully initialize without a mode (needed by /bwroster and
-    // stats extraction). If locraw hasn't arrived yet, wait for it — the
-    // locraw:update event handler will enter the game and the next sidebar
-    // tick will pick up from there.
+    // Need a mode for roster and stat extraction. If locraw hasn't
+    // arrived yet, the locraw:update handler will call enterBedwarsGame
+    // and the next tick picks up from there.
     if (!mode) return;
 
-    // Detect "this is a different game than we're tracking" — either we're
-    // not tracking anything, or the mode/server changed.
+    // Either we aren't tracking, or the mode/server changed.
     const needsEnter =
       !this.inBedwarsGame ||
       this.currentMode !== mode ||
       (server !== null && this.currentServer !== server);
 
     if (needsEnter) {
-      // Clean any prior tracking first so enterBedwarsGame's own guard
+      // Clear any prior tracking so enterBedwarsGame's own guard
       // doesn't short-circuit.
       if (this.inBedwarsGame) {
         this.resetState();
       }
       const isPregame = status === BedWarsStatus.Pregame;
       this.ctx.logger.debug(
-        `[Bedwars] Sidebar entered ${isPregame ? 'Pregame' : 'InGame'} for server=${server ?? 'unknown'} mode=${mode}`,
+        `[Bedwars plugin debug uwu] Sidebar entered ${isPregame ? 'Pregame' : 'InGame'} for server=${server ?? 'unknown'} mode=${mode}`,
       );
-      // Pregame: skip the 3.5s /who fallback — no players committed yet and
-      // firing /who during queue just spams the game.
+      // Skip the 3.5s /who fallback in pregame. Roster isn't committed
+      // and /who during queue is just chat spam.
       this.enterBedwarsGame(mode, server, { scheduleFallbackWho: !isPregame });
     }
 
-    // On transition into InGame (from Pregame, Lobby, or NotInBedWars),
-    // fire /who directly — this is the authoritative "match has started"
-    // signal, more reliable than the "Bed Wars" chat banner which can be
-    // drowned in chat spam.
+    // Transition into InGame. This is our authoritative "match started"
+    // signal. More reliable than the "Bed Wars" chat banner, which
+    // sometimes drowns in chat spam.
     const enteredInGame =
       status === BedWarsStatus.InGame && prev !== BedWarsStatus.InGame;
     if (enteredInGame && this.autoRoster && server && this.rosterPrintedForServer !== server) {
       this.bannerSeen = true; // treat sidebar-in-game as the banner signal
       this.clearFallbackTimeout();
-      this.ctx.logger.debug('[Bedwars] Sidebar reached InGame phase, sending /who');
+      this.ctx.logger.debug('[Bedwars plugin debug uwu] Sidebar reached InGame phase, sending /who');
       this.requestWhoAndPrintSoon('sidebar');
     }
   }
@@ -759,12 +738,9 @@ export default class BedwarsPlugin extends Plugin {
   ): void {
     const scheduleFallbackWho = opts.scheduleFallbackWho ?? true;
 
-    // Only skip re-initialization when we're already tracking the exact same
-    // game instance (same mode AND same server). If the server changes — which
-    // happens every time Hypixel puts us on a new game instance — we must
-    // reset per-game state, even if the mode name is identical to the last
-    // game. Previously only `mode` was checked, which caused back-to-back
-    // games of the same mode to be treated as one continuous game.
+    // Only bail out if we're on the same server AND mode. Server always
+    // changes between games, so comparing mode alone treats back-to-back
+    // games as one.
     if (
       this.inBedwarsGame &&
       this.currentMode === mode &&
@@ -774,7 +750,7 @@ export default class BedwarsPlugin extends Plugin {
       return;
     }
 
-    // New game instance — wipe per-game tracking before setting up.
+    // New game. Wipe per-game tracking before setting up.
     this.clearRosterTimeout();
     this.clearFallbackTimeout();
     this.rosterPrintedForServer = null;
@@ -796,7 +772,7 @@ export default class BedwarsPlugin extends Plugin {
       this.fallbackRosterTimeout = this.ctx.scheduler.setTimeout(() => {
         this.fallbackRosterTimeout = null;
         if (this.inBedwarsGame && !this.bannerSeen && this.rosterPrintedForServer === null) {
-          this.ctx.logger.debug('[Bedwars] Banner not detected, fallback /who trigger');
+          this.ctx.logger.debug('[Bedwars plugin debug uwu] Banner not detected, fallback /who trigger');
           this.requestWhoAndPrintSoon('fallback');
         }
       }, 3500);
@@ -835,7 +811,7 @@ export default class BedwarsPlugin extends Plugin {
 
     this.bannerSeen = true;
     this.clearFallbackTimeout();
-    this.ctx.logger.debug('[Bedwars] Banner detected, sending /who');
+    this.ctx.logger.debug('[Bedwars plugin debug uwu] Banner detected, sending /who');
     this.requestWhoAndPrintSoon('banner');
   }
 
@@ -857,11 +833,11 @@ export default class BedwarsPlugin extends Plugin {
     if (typeof raw !== 'string' || raw.length === 0) return;
 
     const flat = this.extractTextFromChatJson(raw);
-    console.log(`[Bedwars][chat-debug] pos=${String(packet.position ?? -1)} flat=${flat.slice(0, 400)}`);
+    console.log(`[Bedwars plugin debug uwu][chat-debug] pos=${String(packet.position ?? -1)} flat=${flat.slice(0, 400)}`);
     try {
-      console.log('[Bedwars][chat-debug] parsed:', JSON.parse(raw));
+      console.log('[Bedwars plugin debug uwu][chat-debug] parsed:', JSON.parse(raw));
     } catch {
-      console.log('[Bedwars][chat-debug] raw:', raw.slice(0, 300));
+      console.log('[Bedwars plugin debug uwu][chat-debug] raw:', raw.slice(0, 300));
     }
   }
 
@@ -888,7 +864,7 @@ export default class BedwarsPlugin extends Plugin {
         this.rosterAfterWhoTimeout = ctx.scheduler.setTimeout(tick, 400);
         return;
       }
-      ctx.logger.warn('[Bedwars] /who returned no ONLINE names after retries');
+      ctx.logger.warn('[Bedwars plugin debug uwu] /who returned no ONLINE names after retries');
     };
     this.rosterAfterWhoTimeout = ctx.scheduler.setTimeout(tick, 500);
   }
@@ -1159,9 +1135,8 @@ export default class BedwarsPlugin extends Plugin {
     this.game = null;
     this.clearRosterTimeout();
     this.clearFallbackTimeout();
-    // Don't clear `lastSidebarStatus` here — it's tied to the sidebar itself
-    // and is separate from our per-game event tracking. The poll loop will
-    // keep updating it on the next tick.
+    // Leave lastSidebarStatus alone. It tracks the sidebar, not our
+    // per-game event state; the poll loop refreshes it next tick.
   }
 
   onDisable(): void {

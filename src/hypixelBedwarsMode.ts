@@ -74,7 +74,7 @@ export function getBedwarsStats(
 
   let config = bedwarsModes[modeValue];
   if (!config && modeValue.startsWith('bedwars_')) {
-    // Match longest known prefix for rotating queue variants
+    // Longest prefix wins so rotating queue variants still resolve.
     const suffix = modeValue.slice('bedwars_'.length);
     const known = Object.values(bedwarsModes)
       .map((m) => m.prefix)

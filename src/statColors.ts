@@ -34,7 +34,7 @@ export function getWinstreakColor(winstreak: number, type: WinstreakType): strin
     return `§8${wsStr}`;
   }
 
-  // 'best' type
+  // best winstreak
   if (ws >= 1000) return formatAlternating(wsStr, rainbowColors);
   if (ws >= 500) return `§c${wsStr}`;
   if (ws >= 250) return formatAlternating(wsStr, cyanBlueColors);
@@ -48,7 +48,7 @@ export function getWinstreakColor(winstreak: number, type: WinstreakType): strin
   return `§8${wsStr}`;
 }
 
-/** Bedwars star color — single prestige color for inline stat display */
+// Single prestige color for the stars number inline.
 export function getStarsColor(stars: number): string {
   const s = String(Math.floor(stars));
   if (stars >= 3000) return `§e${s}`;
@@ -82,7 +82,7 @@ export function getBblrColor(bblr: number): string {
   return `§8${bblrStr}`;
 }
 
-/** Color final kills using the same scale as mode wins */
+// Final kills use the same color scale as mode wins.
 export function getFinalKillsColor(fk: number): string {
   return getModeWinColor(fk);
 }
