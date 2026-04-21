@@ -4,6 +4,7 @@ import {
   type GameStartPayload,
   type GameEndPayload,
   type LocrawUpdatePayload,
+  type PluginStatTagOption,
 } from '@duelsplus/plugin-api';
 
 import { getBedwarsStats } from './core/hypixelBedwarsMode';
@@ -67,6 +68,30 @@ export default class BedwarsPlugin extends Plugin {
       this.whoTracker,
     );
 
+    // Plugin-contributed stat-tag options shown in /ds prefix/suffix cycles
+    // while the user is in a matching Bedwars mode. Previously these were
+    // hardcoded in the proxy ('BWS'/'FKDR'/'Stars' switch-cases).
+    const fkdrOption: PluginStatTagOption = {
+      id: 'FKDR',
+      display: 'FKDR',
+      extract: (stats) => {
+        const fk = stats.tagKills;
+        const fd = stats.tagDeaths;
+        const raw = fd === 0 ? fk : Math.round((fk / fd) * 100) / 100;
+        return { display: raw.toFixed(2), raw };
+      },
+      color: 'ratio',
+    };
+    const starsOption: PluginStatTagOption = {
+      id: 'Stars',
+      display: 'Stars',
+      extract: (stats) => {
+        const raw = stats.level ?? 0;
+        return { display: String(raw), raw };
+      },
+      color: 'level',
+    };
+
     // Register our game mode so the duels+ stat-tag renderer knows how
     // to pull Bedwars mode stats and stars for auto-tagging players.
     ctx.gameModes.register({
@@ -79,7 +104,7 @@ export default class BedwarsPlugin extends Plugin {
         if (!bw) return null;
         const e = getBedwarsStats(locrawMode.toLowerCase(), bw);
         const achievements = rawPlayer.achievements as Record<string, number> | undefined;
-        const stars = achievements?.bedwars_level ?? 0;
+        const level = achievements?.bedwars_level ?? 0;
         return {
           wins: e.winsInMode,
           losses: e.lossesInMode,
@@ -87,11 +112,12 @@ export default class BedwarsPlugin extends Plugin {
           bestWinstreak: 0,
           tagKills: e.finalKillsInMode,
           tagDeaths: e.finalDeathsInMode,
-          stars,
+          level,
         };
       },
       statTagColorProfile: 'ratio',
-      showHypixelBedwarsStarsInAutoStats: true,
+      showLevelInAutoStats: true,
+      statTagOptions: [fkdrOption, starsOption],
     });
 
     ctx.events.on('game:start', (payload: GameStartPayload) => {
