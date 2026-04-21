@@ -343,7 +343,7 @@ export default class BedwarsPlugin extends Plugin {
     const stars = bw.stars ?? 0;
     const fkdr = safeRatio(bw.finalKills, bw.finalDeaths);
     const wlr = safeRatio(bw.wins, bw.losses);
-    const bblr = safeRatio(bw.bedsBroken, bw.losses);
+    const bblr = safeRatio(bw.bedsBroken, bw.bedsLost);
     const starStr = formatBedwarsLevel(stars);
 
     ctx.client.sendChat(`\n${DIVIDER}`);
@@ -352,7 +352,7 @@ export default class BedwarsPlugin extends Plugin {
     ctx.client.sendChat(`${BULLET} ${starStr} §7Stars`);
     ctx.client.sendChat(`${BULLET} §fW: ${getWinsColorBedwars(bw.wins)}§f, §fL: ${getLossesColor(bw.losses)}§f, §fWLR: ${getWlrColor(wlr)}`);
     ctx.client.sendChat(`${BULLET} §fFK: ${getFinalKillsColor(bw.finalKills)}§f, §fFD: ${getLossesColor(bw.finalDeaths)}§f, §fFKDR: ${getFkdrColor(fkdr)}`);
-    ctx.client.sendChat(`${BULLET} §fBeds: §a${bw.bedsBroken}§f, §fBBLR: ${getBblrColor(bblr)}`);
+    ctx.client.sendChat(`${BULLET} §fBB: §a${bw.bedsBroken}§f, §fBL: §c${bw.bedsLost}§f, §fBBLR: ${getBblrColor(bblr)}`);
     ctx.client.sendChat(`${DIVIDER}`);
   }
 
