@@ -48,24 +48,6 @@ export function getWinstreakColor(winstreak: number, type: WinstreakType): strin
   return `§8${wsStr}`;
 }
 
-// Single prestige color for the stars number inline.
-export function getStarsColor(stars: number): string {
-  const s = String(Math.floor(stars));
-  if (stars >= 3000) return `§e${s}`;
-  if (stars >= 2000) return `§b${s}`;
-  if (stars >= 1000) return `§c${s}`;
-  if (stars >= 900) return `§5${s}`;
-  if (stars >= 800) return `§9${s}`;
-  if (stars >= 700) return `§d${s}`;
-  if (stars >= 600) return `§4${s}`;
-  if (stars >= 500) return `§3${s}`;
-  if (stars >= 400) return `§2${s}`;
-  if (stars >= 300) return `§b${s}`;
-  if (stars >= 200) return `§6${s}`;
-  if (stars >= 100) return `§f${s}`;
-  return `§7${s}`;
-}
-
 export function getBblrColor(bblr: number): string {
   const bblrNum = parseFloat(String(bblr)) || 0;
   const bblrStr = bblrNum.toFixed(2).replace(/\.00$/, '');

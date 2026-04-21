@@ -9,7 +9,7 @@ import {
 } from '@duelsplus/plugin-api';
 
 import { getBedwarsStats } from './hypixelBedwarsMode';
-import { getWinsColorBedwars, getWlrColor, getFkdrColor, formatBedwarsLevel, getModeWinColor, getLossesColor, getWinstreakColor, getBblrColor, getStarsColor, getFinalKillsColor } from './statColors';
+import { getWinsColorBedwars, getWlrColor, getFkdrColor, formatBedwarsLevel, getModeWinColor, getLossesColor, getWinstreakColor, getBblrColor, getFinalKillsColor } from './statColors';
 import { BedWarsStatus, getBedWarsStatus } from './gameModeUtil';
 
 const BW_DUELS_MODES = new Set(['BEDWARS_TWO_ONE_DUELS', 'BEDWARS_TWO_ONE_DUELS_RUSH']);
@@ -462,7 +462,7 @@ export default class BedwarsPlugin extends Plugin {
       const star = formatBedwarsLevel(t.stars);
       const reasons: string[] = [];
       if (t.fkdr >= this.threatFkdrThreshold) reasons.push(`§fFKDR: ${getFkdrColor(t.fkdr)}`);
-      if (t.stars >= this.threatStarsThreshold) reasons.push(`§fStars: ${getStarsColor(t.stars)}`);
+      if (t.stars >= this.threatStarsThreshold) reasons.push(`§fStars: ${formatBedwarsLevel(t.stars)}`);
       ctx.client.sendChat(
         `  §c▸ ${star} §e${t.username} §8(${reasons.join('§8, ')}§8)`,
       );
@@ -1095,7 +1095,7 @@ export default class BedwarsPlugin extends Plugin {
       else paneColor = 0;
 
       const lore: string[] = [
-        `§7Stars: ${getStarsColor(r.stars)}`,
+        `§7Stars: ${formatBedwarsLevel(r.stars)}`,
         '',
         `§7Wins: ${getWinsColorBedwars(r.wins)}`,
         `§7Losses: ${getLossesColor(r.losses)}`,
