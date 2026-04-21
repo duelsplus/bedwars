@@ -186,17 +186,36 @@ function getPrestigePalette(prestige: number): string[] {
   if (prestige < 1900) return ['§7', '§9', '§9', '§9', '§9', '§1', '§7'];
   if (prestige < 2000) return ['§7', '§5', '§5', '§5', '§5', '§8', '§7'];
   if (prestige < 2100) return ['§8', '§7', '§f', '§f', '§7', '§7', '§8'];
-  if (prestige < 2200) return ['§f', '§e', '§e', '§6', '§6', '§6', '§6'];
-  if (prestige < 2300) return ['§6', '§f', '§f', '§b', '§3', '§3', '§3'];
-  if (prestige < 2400) return ['§5', '§d', '§d', '§6', '§e', '§e', '§e'];
-  if (prestige < 2500) return ['§b', '§f', '§f', '§7', '§7', '§8', '§8'];
-  if (prestige < 2600) return ['§f', '§a', '§a', '§2', '§2', '§2', '§2'];
-  if (prestige < 2700) return ['§4', '§c', '§c', '§d', '§d', '§d', '§d'];
-  if (prestige < 2800) return ['§e', '§f', '§f', '§8', '§8', '§8', '§8'];
-  if (prestige < 2900) return ['§a', '§2', '§2', '§6', '§6', '§e', '§e'];
-  if (prestige < 3000) return ['§b', '§3', '§3', '§9', '§9', '§1', '§1'];
-  if (prestige < 3100) return ['§e', '§6', '§6', '§c', '§c', '§4', '§4'];
-  return ['§7', '§7', '§7', '§7', '§7', '§7', '§7'];
+  if (prestige < 2200) return ['§f', '§f', '§e', '§e', '§6', '§6', '§6'];
+  if (prestige < 2300) return ['§6', '§6', '§f', '§f', '§b', '§3', '§3'];
+  if (prestige < 2400) return ['§5', '§5', '§d', '§d', '§6', '§e', '§e'];
+  if (prestige < 2500) return ['§b', '§b', '§f', '§f', '§7', '§7', '§8'];
+  if (prestige < 2600) return ['§f', '§f', '§a', '§a', '§2', '§2', '§2'];
+  if (prestige < 2700) return ['§4', '§4', '§c', '§c', '§d', '§d', '§5'];
+  if (prestige < 2800) return ['§e', '§e', '§f', '§f', '§7', '§7', '§7'];
+  if (prestige < 2900) return ['§a', '§a', '§2', '§2', '§6', '§6', '§e'];
+  if (prestige < 3000) return ['§b', '§b', '§3', '§3', '§9', '§9', '§1'];
+  if (prestige < 3100) return ['§e', '§e', '§6', '§6', '§c', '§c', '§4'];
+  if (prestige < 3200) return ['§9', '§9', '§3', '§3', '§6', '§6', '§e'];
+  if (prestige < 3300) return ['§c', '§4', '§7', '§7', '§4', '§c', '§c'];
+  if (prestige < 3400) return ['§9', '§9', '§9', '§d', '§c', '§c', '§4'];
+  if (prestige < 3500) return ['§2', '§a', '§d', '§d', '§5', '§5', '§2'];
+  if (prestige < 3600) return ['§c', '§c', '§4', '§4', '§2', '§a', '§a'];
+  if (prestige < 3700) return ['§a', '§a', '§a', '§b', '§9', '§9', '§1'];
+  if (prestige < 3800) return ['§4', '§4', '§c', '§c', '§b', '§3', '§3'];
+  if (prestige < 3900) return ['§1', '§1', '§9', '§5', '§5', '§d', '§1'];
+  if (prestige < 4000) return ['§c', '§c', '§a', '§a', '§3', '§9', '§9'];
+  if (prestige < 4100) return ['§5', '§5', '§c', '§c', '§6', '§6', '§e'];
+  if (prestige < 4200) return ['§e', '§e', '§6', '§c', '§d', '§d', '§5'];
+  if (prestige < 4300) return ['§1', '§9', '§3', '§b', '§f', '§7', '§7'];
+  if (prestige < 4400) return ['§0', '§5', '§8', '§8', '§5', '§5', '§0'];
+  if (prestige < 4500) return ['§2', '§2', '§a', '§e', '§6', '§5', '§d'];
+  if (prestige < 4600) return ['§f', '§f', '§b', '§b', '§3', '§3', '§3'];
+  if (prestige < 4700) return ['§3', '§b', '§e', '§e', '§6', '§d', '§5'];
+  if (prestige < 4800) return ['§f', '§4', '§c', '§c', '§9', '§1', '§9'];
+  if (prestige < 4900) return ['§5', '§5', '§c', '§6', '§e', '§b', '§3'];
+  if (prestige < 5000) return ['§2', '§a', '§f', '§f', '§a', '§a', '§2'];
+  return ['§4', '§4', '§5', '§9', '§9', '§1', '§0'];
 }
 
 export function formatBedwarsLevel(level: number): string {
