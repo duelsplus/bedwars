@@ -10,6 +10,7 @@ import {
   getWinsColorBedwars,
   getWlrColor,
   getFkdrColor,
+  getWinstreakColor,
 } from '../util/statColors';
 import { isValidUsername } from '../util/chatJson';
 import { safeRatio } from '../util/format';
@@ -31,6 +32,8 @@ const ROSTER_POLL_RESEND_EVERY = 4;
 export class RosterManager {
   private busy = false;
   private printedForServer: string | null = null;
+  /** Usernames we've decorated in the tab list — cleared on resetState. */
+  private decoratedUsernames = new Set<string>();
   lastRows: RowModel[] = [];
 
   constructor(
@@ -45,6 +48,59 @@ export class RosterManager {
 
   clearPrintedForServer(): void {
     this.printedForServer = null;
+    this.clearTabListDecorations();
+  }
+
+  /**
+   * Remove every tab-list decoration this roster applied. Called from
+   * {@link clearPrintedForServer} and therefore from the state-machine
+   * reset flow, so game end / lobby join / mode switch all wipe the
+   * badges cleanly.
+   */
+  clearTabListDecorations(): void {
+    if (this.decoratedUsernames.size === 0) return;
+    for (const name of this.decoratedUsernames) {
+      try {
+        this.ctx.tabList.clearPlayerDisplay(name);
+      } catch {
+        /* best-effort — plugin shouldn't fail on cleanup */
+      }
+    }
+    this.decoratedUsernames.clear();
+  }
+
+  /**
+   * Apply tab-list badges for every non-nicked player in the roster.
+   * Format mirrors the screenshot reference:
+   *
+   *   `  [12✫] 3.21 fkdr, 1.5 wl, 4 ws`
+   *
+   * emitted as a suffix appended after the username. Uses the tab-list
+   * API's long-form channel (player_info UPDATE_DISPLAY_NAME), so this
+   * is NOT capped to 16 bytes.
+   *
+   * Each stat is individually color-coded via the same helpers the chat
+   * roster uses, so the tab badge reads identically to what /bwroster
+   * prints in chat.
+   */
+  private applyTabListDecorations(rows: RowModel[]): void {
+    for (const r of rows) {
+      if (r.nicked) continue;
+      const star = formatBedwarsLevel(r.stars);
+      const fkdr = getFkdrColor(r.fkdr);
+      const wl = getWlrColor(r.wlr);
+      const ws = getWinstreakColor(r.winstreak, 'current');
+      // Leading `§r ` puts a visual gap between the server's name and our
+      // decoration; `§7` trailers reset color context between stats so
+      // the comma/label runs always render grey.
+      const suffix = ` §r${star} ${fkdr}§7 fkdr, ${wl}§7 wl, ${ws}§7 ws`;
+      try {
+        const ok = this.ctx.tabList.setPlayerDisplay(r.username, { suffix });
+        if (ok) this.decoratedUsernames.add(r.username);
+      } catch {
+        /* best-effort */
+      }
+    }
   }
 
   // Trigger: send /who, retry until we have names, then print.
@@ -126,6 +182,11 @@ export class RosterManager {
       rows.sort((a, b) => b.severity - a.severity);
       this.lastRows = rows;
 
+      // Push full-length ★Stars | FKDR badges into the tab list. Scoreboard
+      // team prefixes are capped to 16 bytes and can't fit both — this
+      // channel has no cap. Cleared on state-machine reset.
+      this.applyTabListDecorations(rows);
+
       for (const r of rows) {
         const isSelf = r.username.toLowerCase() === self;
         const bullet = isSelf ? SELF_BULLET : BULLET;
@@ -175,6 +236,7 @@ export class RosterManager {
         finalKills: 0,
         finalDeaths: 0,
         stars: 0,
+        winstreak: 0,
         nicked: true,
         usedOverallFallback: false,
         severity: -1,
@@ -205,6 +267,19 @@ export class RosterManager {
     const fk = usedOverallFallback ? overallFk : extracted.finalKillsInMode;
     const fkdr = safeRatio(fk, fd);
     const stars = st?.bedwars?.stars ?? 0;
+
+    // Winstreak: prefer the per-mode value, fall back to the top-level
+    // Bedwars `winstreak` field that Hypixel exposes on the raw blob.
+    // Cast through number|string to be defensive; the field is sometimes
+    // missing for freshly-created accounts.
+    const overallWinstreakRaw = (bwRaw['winstreak'] as number | string | undefined) ?? 0;
+    const overallWinstreak = typeof overallWinstreakRaw === 'string'
+      ? parseInt(overallWinstreakRaw, 10) || 0
+      : overallWinstreakRaw;
+    const winstreak = usedOverallFallback
+      ? overallWinstreak
+      : (extracted.currentWinstreakInMode || overallWinstreak);
+
     const severity = wlr * 10_000 + fkdr * 100 + stars;
     return {
       username: display,
@@ -215,6 +290,7 @@ export class RosterManager {
       finalKills: fk,
       finalDeaths: fd,
       stars,
+      winstreak,
       nicked: false,
       usedOverallFallback,
       severity,

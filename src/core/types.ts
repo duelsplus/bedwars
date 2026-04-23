@@ -9,6 +9,8 @@ export interface RowModel {
   finalKills: number;
   finalDeaths: number;
   stars: number;
+  /** Current winstreak in the active mode — falls back to overall when the mode is empty. */
+  winstreak: number;
   nicked: boolean;
   usedOverallFallback: boolean;
   severity: number;
