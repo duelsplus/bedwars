@@ -49,8 +49,20 @@ export class GameStatsTracker {
     const self = ctx.client.username;
     const s = this.settings;
 
+    // Hypixel Bedwars kill/death lines look like
+    //   "[R] Player1 was shot by [B] Player2. FINAL KILL!"
+    // or "Player1 disconnected." after the proxy strips colour codes.
+    // We pull the victim out from before " was "/" disconnected." and the
+    // killer out from after " by ", ignoring any team-prefix like "[R] ".
+    const victimMatch = flat.match(
+      /(?:^|\s)(?:\[[^\]]+\]\s+)?(\w{1,16})\s+(?:was\s|disconnected\.)/,
+    );
+    const killerMatch = flat.match(/\bby\s+(?:\[[^\]]+\]\s+)?(\w{1,16})/);
+    const victim = victimMatch?.[1] ?? null;
+    const killer = killerMatch?.[1] ?? null;
+
     if (flat.includes('FINAL KILL')) {
-      if (flat.includes(self) && !flat.startsWith(self)) {
+      if (killer === self) {
         this.game.finalKills++;
         if (s.finalKillAlerts) {
           ctx.client.playSound('random.orb', 0.8, 1.2);
@@ -58,7 +70,7 @@ export class GameStatsTracker {
             `§a§lFinal Kill! §7(${this.game.finalKills} FK this game)`,
           );
         }
-      } else if (flat.startsWith(self)) {
+      } else if (victim === self) {
         this.game.finalDeaths++;
         if (s.finalKillAlerts) {
           ctx.client.sendActionBar(
@@ -66,19 +78,18 @@ export class GameStatsTracker {
           );
         }
       }
-    }
-
-    const killMatch = flat.match(/^(\w+) (?:was .+ by|disconnected\.) ?(\w*)/);
-    if (killMatch && !flat.includes('FINAL KILL')) {
-      if (killMatch[2] === self) {
+    } else if (victim || killer) {
+      // Regular (non-final) kill on the surviving team — count it but
+      // skip the alerts; FK alerts are the loud ones.
+      if (killer === self) {
         this.game.kills++;
-      } else if (killMatch[1] === self) {
+      } else if (victim === self) {
         this.game.deaths++;
       }
     }
 
     if (flat.includes('BED DESTRUCTION')) {
-      if (flat.includes('Your Bed') || flat.includes('your bed')) {
+      if (/your\s+bed/i.test(flat)) {
         this.game.bedsLost++;
         if (s.bedBreakAlerts) {
           ctx.client.playSound('mob.endermen.portal', 1.0, 0.5);
@@ -88,7 +99,7 @@ export class GameStatsTracker {
             { fadeIn: 3, stay: 30, fadeOut: 10 },
           );
         }
-      } else if (flat.includes(self) || flat.includes('you!') || flat.includes('You!')) {
+      } else if (killer === self || /\bby\s+(?:\[[^\]]+\]\s+)?you!?/i.test(flat)) {
         this.game.bedsBroken++;
         if (s.bedBreakAlerts) {
           ctx.client.playSound('random.levelup', 0.8, 2.0);

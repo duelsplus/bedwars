@@ -73,9 +73,9 @@ export function openSettingsGUI(
     value: number,
     name: string,
     desc: string,
-    _step: number,
-    _min: number,
-    _max: number,
+    step: number,
+    min: number,
+    max: number,
   ): ReturnType<typeof ctx.gui.createItem> => {
     return ctx.gui.createItem(
       MATERIAL_GOLD_INGOT,
@@ -84,10 +84,10 @@ export function openSettingsGUI(
       [
         `§7${desc}`,
         '',
-        `§7Current: §e${value}`,
+        `§7Current: §e${value} §8(§7${min}–${max}§8)`,
         '',
-        '§eLeft-click: +${step}',
-        '§eRight-click: -${step}',
+        `§eLeft-click: §a+${step}`,
+        `§eRight-click: §c-${step}`,
       ],
     );
   };
