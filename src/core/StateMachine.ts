@@ -2,6 +2,7 @@ import {
   EarlyChatBuffer,
   GamePhaseDriver,
   type PluginContext,
+  type PluginLogger,
   type WhoTracker,
 } from '@duelsplus/plugin-api';
 import type { Settings } from './Settings';
@@ -33,12 +34,13 @@ export class StateMachine {
     private roster: RosterManager,
     private gameStats: GameStatsTracker,
     private who: WhoTracker,
+    private log: PluginLogger,
   ) {
     this.driver = new GamePhaseDriver<BedWarsStatus>(ctx, {
       detectPhase: getBedWarsStatus,
       onUnsupported: () =>
-        ctx.logger.warn(
-          '[Bedwars plugin debug uwu] ctx.scoreboard.getSidebar unavailable; sidebar phase detection disabled. Update the proxy to enable it.',
+        this.log.warn(
+          'ctx.scoreboard.getSidebar unavailable; sidebar phase detection disabled. Update the proxy to enable it.',
         ),
     });
     this.driver.onTransition((prev, next) => this.onPhaseTransition(prev, next));
@@ -92,9 +94,7 @@ export class StateMachine {
           !this.bannerSeen &&
           this.roster.getPrintedForServer() === null
         ) {
-          this.ctx.logger.debug(
-            '[Bedwars plugin debug uwu] Banner not detected, fallback /who trigger',
-          );
+          this.log.debug('Banner not detected, fallback /who trigger');
           this.roster.requestAndPrint(
             () => this.currentMode ?? this.ctx.gameState.currentMode,
             'fallback',
@@ -156,7 +156,7 @@ export class StateMachine {
 
     this.bannerSeen = true;
     this.clearFallbackTimeout();
-    this.ctx.logger.debug('[Bedwars plugin debug uwu] Banner detected, sending /who');
+    this.log.debug('Banner detected, sending /who');
     this.roster.requestAndPrint(
       () => this.currentMode ?? this.ctx.gameState.currentMode,
       'banner',
@@ -167,8 +167,8 @@ export class StateMachine {
   private onPhaseTransition(prev: BedWarsStatus | null, next: BedWarsStatus): void {
     if (next === BedWarsStatus.NotInBedWars || next === BedWarsStatus.Lobby) {
       if (this.inBedwarsGame) {
-        this.ctx.logger.debug(
-          `[Bedwars plugin debug uwu] Sidebar reports ${next === BedWarsStatus.Lobby ? 'Lobby' : 'NotInBedWars'}; resetting per-game state`,
+        this.log.debug(
+          `Sidebar reports ${next === BedWarsStatus.Lobby ? 'Lobby' : 'NotInBedWars'}; resetting per-game state`,
         );
         this.resetState();
       }
@@ -188,7 +188,7 @@ export class StateMachine {
     ) {
       this.bannerSeen = true;
       this.clearFallbackTimeout();
-      this.ctx.logger.debug('[Bedwars plugin debug uwu] Sidebar reached InGame phase, sending /who');
+      this.log.debug('Sidebar reached InGame phase, sending /who');
       this.roster.requestAndPrint(
         () => this.currentMode ?? this.ctx.gameState.currentMode,
         'sidebar',
@@ -215,8 +215,8 @@ export class StateMachine {
 
     if (this.inBedwarsGame) this.resetState();
     const isPregame = status === BedWarsStatus.Pregame;
-    this.ctx.logger.debug(
-      `[Bedwars plugin debug uwu] Sidebar entered ${isPregame ? 'Pregame' : 'InGame'} for server=${server ?? 'unknown'} mode=${mode}`,
+    this.log.debug(
+      `Sidebar entered ${isPregame ? 'Pregame' : 'InGame'} for server=${server ?? 'unknown'} mode=${mode}`,
     );
     // /who during queue is just chat spam; roster isn't committed yet.
     this.enterBedwarsGame(mode, server, { scheduleFallbackWho: !isPregame });

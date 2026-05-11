@@ -1,10 +1,12 @@
 import {
   Plugin,
+  createLogger,
   type PluginContext,
   type GameStartPayload,
   type GameEndPayload,
   type LocrawUpdatePayload,
   type PluginStatTagOption,
+  type ScopedLogger,
 } from '@duelsplus/plugin-api';
 
 import { getBedwarsStats } from './core/hypixelBedwarsMode';
@@ -44,21 +46,27 @@ export default class BedwarsPlugin extends Plugin {
   private roster!: RosterManager;
   // `Plugin.state` is taken by the base lifecycle getter, hence `stateMachine`.
   private stateMachine!: StateMachine;
+  private chatDebugLog!: ScopedLogger;
 
   onLoad(ctx: PluginContext): void {
     this.ctx = ctx;
+
+    const stateLog = createLogger(ctx.logger, 'state-machine');
+    const rosterLog = createLogger(ctx.logger, 'roster');
+    this.chatDebugLog = createLogger(ctx.logger, 'chat-debug');
 
     this.settings = new Settings(ctx);
     this.session = new Session(ctx, this.settings);
     this.gameStats = new GameStatsTracker(ctx, this.settings);
     this.whoTracker = new WhoTracker(ctx);
-    this.roster = new RosterManager(ctx, this.settings, this.whoTracker);
+    this.roster = new RosterManager(ctx, this.settings, this.whoTracker, rosterLog);
     this.stateMachine = new StateMachine(
       ctx,
       this.settings,
       this.roster,
       this.gameStats,
       this.whoTracker,
+      stateLog,
     );
 
     // Stat-tag options surfaced in /ds prefix/suffix cycles while the user is
@@ -229,12 +237,12 @@ export default class BedwarsPlugin extends Plugin {
         const sub = args[0]?.toLowerCase();
         if (sub === 'on') {
           this.settings.set('debugChat', true);
-          console.log('[Bedwars plugin debug uwu] chat packet debug ON');
+          ctx.logger.info('[Bedwars plugin debug uwu] chat packet debug ON');
         } else if (sub === 'off') {
           this.settings.set('debugChat', false);
-          console.log('[Bedwars plugin debug uwu] chat packet debug OFF');
+          ctx.logger.info('[Bedwars plugin debug uwu] chat packet debug OFF');
         } else {
-          console.log(
+          ctx.logger.info(
             `[Bedwars plugin debug uwu] chat debug: ${this.settings.debugChat ? 'ON' : 'OFF'}`,
           );
         }
@@ -289,13 +297,13 @@ export default class BedwarsPlugin extends Plugin {
     if (typeof raw !== 'string' || raw.length === 0) return;
 
     const flat = extractTextFromChatJson(raw);
-    console.log(
+    this.ctx.logger.debug(
       `[Bedwars plugin debug uwu][chat-debug] pos=${String(packet.position ?? -1)} flat=${flat.slice(0, 400)}`,
     );
     try {
-      console.log('[Bedwars plugin debug uwu][chat-debug] parsed:', JSON.parse(raw));
+      this.ctx.logger.debug('[Bedwars plugin debug uwu][chat-debug] parsed:', JSON.parse(raw));
     } catch {
-      console.log('[Bedwars plugin debug uwu][chat-debug] raw:', raw.slice(0, 300));
+      this.ctx.logger.debug('[Bedwars plugin debug uwu][chat-debug] raw:', raw.slice(0, 300));
     }
   }
 

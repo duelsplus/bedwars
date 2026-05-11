@@ -1,4 +1,4 @@
-import type { PluginContext, HypixelPlayerStats } from '@duelsplus/plugin-api';
+import type { PluginContext, PluginLogger, HypixelPlayerStats } from '@duelsplus/plugin-api';
 import type { Settings } from './Settings';
 import type { WhoTracker } from './WhoTracker';
 import type { RowModel } from './types';
@@ -33,6 +33,7 @@ export class RosterManager {
     private ctx: PluginContext,
     private settings: Settings,
     private who: WhoTracker,
+    private log: PluginLogger,
   ) {}
 
   getPrintedForServer(): string | null {
@@ -103,7 +104,7 @@ export class RosterManager {
         this.who.scheduleRetry(tick, ROSTER_POLL_INTERVAL_MS);
         return;
       }
-      ctx.logger.warn('[Bedwars plugin debug uwu] /who returned no ONLINE names after retries');
+      this.log.warn('/who returned no ONLINE names after retries');
     };
     this.who.scheduleRetry(tick, ROSTER_POLL_INITIAL_MS);
   }
@@ -181,7 +182,7 @@ export class RosterManager {
       this.printedForServer = server;
       this.checkThreats(rows);
     } catch (e) {
-      ctx.logger.warn('Bedwars roster failed', e);
+      this.log.warn('roster fetch/print failed', e);
     } finally {
       this.busy = false;
     }
