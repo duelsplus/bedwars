@@ -1,4 +1,8 @@
-import type { PluginContext, GameEndPayload } from '@duelsplus/plugin-api';
+import {
+  SessionTracker,
+  type PluginContext,
+  type GameEndPayload,
+} from '@duelsplus/plugin-api';
 import type { BedwarsSessionStats, GameTracker } from './types';
 import type { Settings } from './Settings';
 import { PREFIX, BULLET, DIVIDER } from './constants';
@@ -16,74 +20,86 @@ import {
 // Sessions older than this are discarded on load.
 const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
+function freshStats(): BedwarsSessionStats {
+  return {
+    wins: 0,
+    losses: 0,
+    finalKills: 0,
+    finalDeaths: 0,
+    bedsBroken: 0,
+    bedsLost: 0,
+    gamesPlayed: 0,
+    winstreak: 0,
+    bestWinstreak: 0,
+    startedAt: Date.now(),
+  };
+}
+
 export class Session {
-  private stats: BedwarsSessionStats;
+  private tracker: SessionTracker<BedwarsSessionStats>;
 
   constructor(private ctx: PluginContext, private settings: Settings) {
-    const saved = ctx.storage.get<BedwarsSessionStats>('session');
-    if (saved && Date.now() - saved.startedAt < SESSION_MAX_AGE_MS) {
-      this.stats = saved;
-    } else {
-      this.stats = this.fresh();
-    }
+    this.tracker = new SessionTracker<BedwarsSessionStats>(ctx, {
+      storageKey: 'session',
+      fresh: freshStats,
+      maxAgeMs: SESSION_MAX_AGE_MS,
+    });
   }
 
   getStats(): BedwarsSessionStats {
-    return this.stats;
+    return this.tracker.stats;
   }
 
   reset(): void {
-    this.stats = this.fresh();
-    this.persist();
+    this.tracker.reset();
   }
 
   persist(): void {
-    this.ctx.storage.set('session', this.stats);
+    this.tracker.persist();
   }
 
   /** @param game Per-game counters from GameStatsTracker, null if tracking was lost. */
   onGameEnd(payload: GameEndPayload, game: GameTracker | null): void {
-    const s = this.stats;
-    s.gamesPlayed++;
+    this.tracker.update((s) => {
+      s.gamesPlayed++;
 
-    if (game) {
-      s.finalKills += game.finalKills;
-      s.finalDeaths += game.finalDeaths;
-      s.bedsBroken += game.bedsBroken;
-      s.bedsLost += game.bedsLost;
-    }
-
-    if (payload.result === 'victory') {
-      s.wins++;
-      s.winstreak++;
-      if (s.winstreak > s.bestWinstreak) {
-        s.bestWinstreak = s.winstreak;
+      if (game) {
+        s.finalKills += game.finalKills;
+        s.finalDeaths += game.finalDeaths;
+        s.bedsBroken += game.bedsBroken;
+        s.bedsLost += game.bedsLost;
       }
 
-      if (this.settings.streakAlerts && s.winstreak > 1 && s.winstreak % 3 === 0) {
-        this.ctx.client.sendTitle(
-          `§6§l${s.winstreak} Winstreak!`,
-          '§eKeep it going!',
-          { fadeIn: 5, stay: 40, fadeOut: 10 },
-        );
-        this.ctx.client.playSound('random.levelup', 1.0, 1.5);
-      }
-    } else if (payload.result === 'defeat') {
-      s.losses++;
-      if (this.settings.streakAlerts && s.winstreak >= 3) {
-        this.ctx.client.sendChat(
-          `${PREFIX} §c${s.winstreak} winstreak ended. §8(§fWLR: ${getWlrColor(safeRatio(s.wins, s.losses))}§8)`,
-        );
-      }
-      s.winstreak = 0;
-    }
+      if (payload.result === 'victory') {
+        s.wins++;
+        s.winstreak++;
+        if (s.winstreak > s.bestWinstreak) {
+          s.bestWinstreak = s.winstreak;
+        }
 
-    this.persist();
+        if (this.settings.streakAlerts && s.winstreak > 1 && s.winstreak % 3 === 0) {
+          this.ctx.client.sendTitle(
+            `§6§l${s.winstreak} Winstreak!`,
+            '§eKeep it going!',
+            { fadeIn: 5, stay: 40, fadeOut: 10 },
+          );
+          this.ctx.client.playSound('random.levelup', 1.0, 1.5);
+        }
+      } else if (payload.result === 'defeat') {
+        s.losses++;
+        if (this.settings.streakAlerts && s.winstreak >= 3) {
+          this.ctx.client.sendChat(
+            `${PREFIX} §c${s.winstreak} winstreak ended. §8(§fWLR: ${getWlrColor(safeRatio(s.wins, s.losses))}§8)`,
+          );
+        }
+        s.winstreak = 0;
+      }
+    });
   }
 
   show(): void {
     const ctx = this.ctx;
-    const s = this.stats;
+    const s = this.tracker.stats;
     if (s.gamesPlayed === 0) {
       ctx.client.sendChat(`${PREFIX} §cNo Bedwars games played this session.`);
       return;
@@ -110,20 +126,5 @@ export class Session {
       `${BULLET} §fCWS: ${getWinstreakColor(s.winstreak, 'current')}§f, §fBest: ${getWinstreakColor(s.bestWinstreak, 'best')}`,
     );
     ctx.client.sendChat(`${DIVIDER}`);
-  }
-
-  private fresh(): BedwarsSessionStats {
-    return {
-      wins: 0,
-      losses: 0,
-      finalKills: 0,
-      finalDeaths: 0,
-      bedsBroken: 0,
-      bedsLost: 0,
-      gamesPlayed: 0,
-      winstreak: 0,
-      bestWinstreak: 0,
-      startedAt: Date.now(),
-    };
   }
 }

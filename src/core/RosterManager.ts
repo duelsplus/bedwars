@@ -88,7 +88,7 @@ export class RosterManager {
     if (!mode) return;
 
     this.who.clearNames();
-    this.who.sendWho();
+    this.who.send();
 
     let attempt = 0;
     const tick = (): void => {
@@ -99,7 +99,7 @@ export class RosterManager {
         return;
       }
       if (attempt <= ROSTER_POLL_MAX_ATTEMPTS) {
-        if (attempt % ROSTER_POLL_RESEND_EVERY === 0) this.who.sendWho();
+        if (attempt % ROSTER_POLL_RESEND_EVERY === 0) this.who.send();
         this.who.scheduleRetry(tick, ROSTER_POLL_INTERVAL_MS);
         return;
       }
