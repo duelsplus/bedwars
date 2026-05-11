@@ -237,13 +237,13 @@ export default class BedwarsPlugin extends Plugin {
         const sub = args[0]?.toLowerCase();
         if (sub === 'on') {
           this.settings.set('debugChat', true);
-          ctx.logger.info('[Bedwars plugin debug uwu] chat packet debug ON');
+          this.chatDebugLog.info('chat packet debug ON');
         } else if (sub === 'off') {
           this.settings.set('debugChat', false);
-          ctx.logger.info('[Bedwars plugin debug uwu] chat packet debug OFF');
+          this.chatDebugLog.info('chat packet debug OFF');
         } else {
-          ctx.logger.info(
-            `[Bedwars plugin debug uwu] chat debug: ${this.settings.debugChat ? 'ON' : 'OFF'}`,
+          this.chatDebugLog.info(
+            `chat debug: ${this.settings.debugChat ? 'ON' : 'OFF'}`,
           );
         }
       },
@@ -297,13 +297,13 @@ export default class BedwarsPlugin extends Plugin {
     if (typeof raw !== 'string' || raw.length === 0) return;
 
     const flat = extractTextFromChatJson(raw);
-    this.ctx.logger.debug(
-      `[Bedwars plugin debug uwu][chat-debug] pos=${String(packet.position ?? -1)} flat=${flat.slice(0, 400)}`,
+    this.chatDebugLog.debug(
+      `pos=${String(packet.position ?? -1)} flat=${flat.slice(0, 400)}`,
     );
     try {
-      this.ctx.logger.debug('[Bedwars plugin debug uwu][chat-debug] parsed:', JSON.parse(raw));
+      this.chatDebugLog.debug('parsed:', JSON.parse(raw));
     } catch {
-      this.ctx.logger.debug('[Bedwars plugin debug uwu][chat-debug] raw:', raw.slice(0, 300));
+      this.chatDebugLog.debug('raw:', raw.slice(0, 300));
     }
   }
 
