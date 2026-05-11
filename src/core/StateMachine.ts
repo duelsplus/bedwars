@@ -7,32 +7,18 @@ import { BedWarsStatus, getBedWarsStatus } from './gameModeUtil';
 import { isBedWarsTitleBanner } from './modeDetection';
 import { extractTextFromChatJson } from '../util/chatJson';
 
-// Sidebar is polled at this interval (ms). Trade-off: lower = faster
-// phase detection, higher = less overhead. 1s matches Hypixel's
-// sidebar refresh cadence.
+// 1s matches Hypixel's sidebar refresh cadence.
 const SIDEBAR_POLL_INTERVAL_MS = 1000;
 
-// How long to wait after entering a game for the "BED WARS" banner
-// before falling back to firing /who anyway. Kicks in when chat is
-// spammy and we miss the banner.
+// How long to wait for the "BED WARS" banner before falling back to /who.
 const FALLBACK_WHO_DELAY_MS = 3500;
 
-// Cap on how many pre-entry chats we buffer. If locraw arrives late
-// we replay them; trimming to a window keeps this bounded.
+// Cap on the pre-entry chat replay buffer.
 const EARLY_CHAT_BUFFER_MAX = 50;
 
 // TY DESSSSSS
-//
-// Sidebar-driven state machine. The sidebar is the primary source of
-// phase transitions; the event system (game:start, game:end,
-// locraw:update) runs alongside but loses to the sidebar on
-// disagreement, since the sidebar tracks what Hypixel is actually
-// showing on screen.
-//
-// Owns: inBedwarsGame flag, current mode/server, banner-seen state,
-// early-chat buffer, fallback-/who timer, and the sidebar poll handle.
-// Delegates per-game counter reset/begin to GameStatsTracker and
-// /who send/capture to WhoTracker.
+// Sidebar is the primary phase source; game:start / game:end / locraw:update
+// run alongside but lose to the sidebar on disagreement.
 export class StateMachine {
   inBedwarsGame = false;
   bannerSeen = false;
@@ -43,8 +29,8 @@ export class StateMachine {
   private collectingEarlyChats = false;
   private fallbackRosterTimeout: number | null = null;
 
-  // Last sidebar phase. Backup for game:start / locraw:update, which
-  // sometimes miss back-to-back games of the same mode.
+  // Backup for game:start / locraw:update, which sometimes miss back-to-back
+  // games of the same mode.
   private lastSidebarStatus: BedWarsStatus = BedWarsStatus.NotInBedWars;
   private sidebarPollHandle: number | null = null;
 
@@ -70,9 +56,8 @@ export class StateMachine {
     }
   }
 
-  // Begin tracking a fresh Bedwars game. Idempotent when called on the
-  // same server+mode; otherwise clears prior per-game state and arms a
-  // fallback /who timer.
+  // Idempotent on the same server+mode; otherwise resets per-game state and
+  // arms a fallback /who timer.
   enterBedwarsGame(
     mode: string,
     server: string | null,
@@ -80,9 +65,8 @@ export class StateMachine {
   ): void {
     const scheduleFallbackWho = opts.scheduleFallbackWho ?? true;
 
-    // Only bail if we're on the same server AND mode. Server always
-    // changes between games, so comparing mode alone treats back-to-
-    // back games as one.
+    // Server always changes between games, so mode alone would treat
+    // back-to-back games as one.
     if (
       this.inBedwarsGame &&
       this.currentMode === mode &&
@@ -92,7 +76,6 @@ export class StateMachine {
       return;
     }
 
-    // New game. Wipe per-game tracking before setting up.
     this.who.clearRetry();
     this.clearFallbackTimeout();
     this.roster.clearPrintedForServer();
@@ -124,8 +107,7 @@ export class StateMachine {
     }
   }
 
-  // Drop all per-game state. Leaves `lastSidebarStatus` alone; the poll
-  // loop refreshes it next tick.
+  // Leaves `lastSidebarStatus` alone; the poll loop refreshes it next tick.
   resetState(): void {
     this.inBedwarsGame = false;
     this.bannerSeen = false;
@@ -140,9 +122,6 @@ export class StateMachine {
     this.clearFallbackTimeout();
   }
 
-  // Entry point for incoming chat packets. Routes to WhoTracker,
-  // GameStatsTracker, early-chat buffer, or banner detection as
-  // appropriate.
   onChatPacket(data: unknown): void {
     const packet = data as { message?: string };
     const raw = packet?.message;
@@ -164,8 +143,8 @@ export class StateMachine {
     this.tryDetectBanner(raw);
   }
 
-  // Replay chats captured before locraw arrived so we don't miss the
-  // banner or /who response that came first.
+  // Drains chats captured before locraw arrived so the banner / /who response
+  // aren't missed when they came first.
   replayEarlyChats(): void {
     this.collectingEarlyChats = false;
     const chats = this.earlyChats.splice(0);
@@ -193,11 +172,9 @@ export class StateMachine {
     );
   }
 
-  // Sidebar-driven reconciliation loop. See class-level comment for
-  // the full contract.
   private pollSidebarState(): void {
-    // Older proxies don't implement getSidebar(). Kill the poller so we
-    // don't throw every second.
+    // Older proxies don't implement getSidebar(); kill the poller so we don't
+    // throw every second.
     const sb = this.ctx.scoreboard as { getSidebar?: () => unknown };
     if (typeof sb.getSidebar !== 'function') {
       this.stopSidebarPoll();
@@ -212,8 +189,7 @@ export class StateMachine {
     const prev = this.lastSidebarStatus;
     this.lastSidebarStatus = status;
 
-    // Not in a BW match. Clear any tracking so stale per-game data
-    // doesn't bleed into /bwgame or nametags next game.
+    // Clear tracking so stale per-game data doesn't bleed into /bwgame next game.
     if (status === BedWarsStatus.NotInBedWars || status === BedWarsStatus.Lobby) {
       if (this.inBedwarsGame) {
         this.ctx.logger.debug(
@@ -224,24 +200,21 @@ export class StateMachine {
       return;
     }
 
-    // In Pregame or InGame. Reconcile server+mode against locraw.
+    // Pregame or InGame: reconcile server+mode against locraw.
     const server = this.ctx.gameState.locraw.server ?? null;
     const mode = this.ctx.gameState.currentMode ?? this.currentMode;
 
-    // Need a mode for roster and stat extraction. If locraw hasn't
-    // arrived yet, the locraw:update handler will call enterBedwarsGame
-    // and the next tick picks up from there.
+    // Without a mode there's nothing for the roster / stat extractor to do;
+    // locraw:update will call enterBedwarsGame and the next tick will pick up.
     if (!mode) return;
 
-    // Either we aren't tracking, or the mode/server changed.
     const needsEnter =
       !this.inBedwarsGame ||
       this.currentMode !== mode ||
       (server !== null && this.currentServer !== server);
 
     if (needsEnter) {
-      // Clear any prior tracking so enterBedwarsGame's own guard
-      // doesn't short-circuit.
+      // enterBedwarsGame's own guard would short-circuit without this reset.
       if (this.inBedwarsGame) {
         this.resetState();
       }
@@ -249,14 +222,12 @@ export class StateMachine {
       this.ctx.logger.debug(
         `[Bedwars plugin debug uwu] Sidebar entered ${isPregame ? 'Pregame' : 'InGame'} for server=${server ?? 'unknown'} mode=${mode}`,
       );
-      // Skip the fallback /who in pregame. Roster isn't committed and
-      // /who during queue is just chat spam.
+      // /who during queue is just chat spam; roster isn't committed yet.
       this.enterBedwarsGame(mode, server, { scheduleFallbackWho: !isPregame });
     }
 
-    // Transition into InGame. This is our authoritative "match started"
-    // signal. More reliable than the "Bed Wars" chat banner, which
-    // sometimes drowns in chat spam.
+    // Sidebar reaching InGame is the authoritative "match started" signal;
+    // more reliable than the "Bed Wars" chat banner.
     const enteredInGame =
       status === BedWarsStatus.InGame && prev !== BedWarsStatus.InGame;
     if (

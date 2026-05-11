@@ -9,37 +9,10 @@ import {
   MATERIAL_GOLD_INGOT,
 } from '../core/constants';
 
-// ============================================================
 // Item builders
-// ============================================================
 
-// Green dye / bone toggle. Visually mirrors the murder-mystery
-// settings GUI so the two plugins feel consistent.
-function makeToggle(
-  ctx: PluginContext,
-  isOn: boolean,
-  name: string,
-  desc: string,
-  footnote?: string,
-): GUIItemData {
-  const lore: string[] = [
-    isOn ? '§7Status: §aEnabled' : '§7Status: §cDisabled',
-    '',
-    `§7${desc}`,
-  ];
-  if (footnote) lore.push('', footnote);
-  lore.push('', '§eClick to toggle');
-  return ctx.gui.createItem(
-    isOn ? 351 : 352,
-    isOn ? 10 : 0,
-    `${isOn ? '§a' : '§c'}${name}`,
-    lore,
-  );
-}
-
-// Item-specific toggle that adds an enchant glow when on. Use when the
-// item itself communicates the meaning (e.g. golden sword for Final
-// Kill Alerts, bed for Bed Alerts).
+// Icon toggle with an enchant glow when on. Use when the item itself
+// communicates the meaning (golden sword for Final Kill Alerts, bed for Bed Alerts).
 function makeSimpleToggle(
   ctx: PluginContext,
   isOn: boolean,
@@ -66,9 +39,7 @@ function makeSimpleToggle(
   return item;
 }
 
-// Category icon shown on the main menu. The status line beneath the
-// title summarises the sub-menu's current state so users can see at a
-// glance which features are on without drilling in.
+// Category icon for the main menu; the `status` line summarises the sub-menu.
 function makeCategory(
   ctx: PluginContext,
   itemId: number,
@@ -130,9 +101,7 @@ function makeClose(ctx: PluginContext): GUIItemData {
   return ctx.gui.createItem(MATERIAL_BARRIER, 0, '§cClose', ['§7Close this menu']);
 }
 
-// ============================================================
-// Status summaries (rendered on category items)
-// ============================================================
+// Status summaries rendered on category items
 
 function rosterStatus(s: Settings): string {
   return s.autoRoster ? '§aAuto-roster on' : '§cAuto-roster off';
@@ -161,10 +130,6 @@ function advancedStatus(s: Settings): string {
   return s.debugChat ? '§eDebug chat: §aon' : '§7Debug chat: §8off';
 }
 
-// ============================================================
-// Constants
-// ============================================================
-
 const BW_STAT_OPTIONS = ['None', 'Stars', 'Wins', 'Losses', 'WLR', 'FKDR', 'WS'] as const;
 type BwStat = (typeof BW_STAT_OPTIONS)[number];
 
@@ -189,12 +154,8 @@ function createGUI(
   }
 }
 
-// ============================================================
 // Main settings menu
-// ============================================================
 
-// Top-level category picker. Each slot opens a focused sub-menu so the
-// flat layout doesn't get cramped as more toggles are added.
 export function openSettingsGUI(
   ctx: PluginContext,
   settings: Settings,
@@ -205,7 +166,6 @@ export function openSettingsGUI(
   gui.fillBlack();
 
   const updateAll = (): void => {
-    // Roster — bed icon (very Bedwars-y)
     gui.updateSlot(
       10,
       makeCategory(ctx, 355, '§eRoster', rosterStatus(settings)),
@@ -215,7 +175,6 @@ export function openSettingsGUI(
       },
     );
 
-    // Threats — golden sword
     gui.updateSlot(
       11,
       makeCategory(ctx, 283, '§6Threats', threatStatus(settings)),
@@ -225,7 +184,6 @@ export function openSettingsGUI(
       },
     );
 
-    // Alerts — note block
     gui.updateSlot(
       12,
       makeCategory(ctx, 25, '§eAlerts', alertsStatus(settings)),
@@ -235,7 +193,6 @@ export function openSettingsGUI(
       },
     );
 
-    // Stat Tags — paper
     gui.updateSlot(
       14,
       makeCategory(ctx, MATERIAL_PAPER, '§fStat Tags', statTagStatus(ctx)),
@@ -245,7 +202,6 @@ export function openSettingsGUI(
       },
     );
 
-    // Session — book (jumps straight to session.show())
     gui.updateSlot(
       15,
       ctx.gui.createItem(MATERIAL_BOOK, 0, '§bSession Stats', [
@@ -259,7 +215,6 @@ export function openSettingsGUI(
       },
     );
 
-    // Advanced — redstone dust
     gui.updateSlot(
       16,
       makeCategory(ctx, 331, '§7Advanced', advancedStatus(settings)),
@@ -276,9 +231,7 @@ export function openSettingsGUI(
   gui.open();
 }
 
-// ============================================================
 // Roster sub-menu
-// ============================================================
 
 function openRosterGUI(
   ctx: PluginContext,
@@ -315,9 +268,7 @@ function openRosterGUI(
   gui.open();
 }
 
-// ============================================================
 // Threats sub-menu
-// ============================================================
 
 function openThreatsGUI(
   ctx: PluginContext,
@@ -392,9 +343,7 @@ function openThreatsGUI(
   gui.open();
 }
 
-// ============================================================
 // Alerts sub-menu
-// ============================================================
 
 function openAlertsGUI(
   ctx: PluginContext,
@@ -461,13 +410,10 @@ function openAlertsGUI(
   gui.open();
 }
 
-// ============================================================
 // Stat Tags sub-menu
-// ============================================================
 
-// Stat-tag prefix/suffix live in `ctx.settings` (the proxy-side store)
-// so the duels+ tag renderer and this GUI stay in sync. We don't
-// persist them through `settings` because they're not Bedwars-only.
+// Backed by `ctx.settings` (proxy-side) so the tag renderer and this GUI stay
+// in sync; not Bedwars-only state so it doesn't live on `settings`.
 function openStatTagsGUI(
   ctx: PluginContext,
   settings: Settings,
@@ -510,9 +456,7 @@ function openStatTagsGUI(
   gui.open();
 }
 
-// ============================================================
 // Advanced sub-menu
-// ============================================================
 
 function openAdvancedGUI(
   ctx: PluginContext,
@@ -548,8 +492,3 @@ function openAdvancedGUI(
   updateAll();
   gui.open();
 }
-
-// `makeToggle` is exported in spirit (used inside this module only); keep
-// the symbol live so future refactors that want a non-icon toggle don't
-// need to re-introduce the helper.
-void makeToggle;

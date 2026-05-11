@@ -1,12 +1,7 @@
 import type { PluginContext } from '@duelsplus/plugin-api';
 
-// Holds all user-tunable plugin toggles and thresholds. Loads defaults
-// from storage on construction and writes back through `set()` so the
-// GUI and command handlers don't need to know the storage keys.
-//
-// Settings fields are intentionally public so call-sites can read them
-// directly (e.g. `settings.autoRoster`). Use `set()` for writes so the
-// value is persisted.
+// Storage-backed plugin toggles. Fields are public so call-sites can read
+// directly; writes must go through `set()` to persist.
 export class Settings {
   debugChat: boolean;
   autoRoster: boolean;
@@ -28,9 +23,6 @@ export class Settings {
     this.streakAlerts = ctx.storage.get<boolean>('streakAlerts') ?? true;
   }
 
-  // Update a field and persist it. The string-typed signature mirrors
-  // the original inline-GUI pattern where we drive updates via a key
-  // name; callers pass one of the field names above.
   set(key: string, value: unknown): void {
     (this as unknown as Record<string, unknown>)[key] = value;
     this.ctx.storage.set(key, value);

@@ -29,9 +29,6 @@ import { RosterManager } from './core/RosterManager';
 import { StateMachine } from './core/StateMachine';
 import { openSettingsGUI } from './ui/SettingsGUI';
 
-// Thin plugin entry point. Wires up the managers in `core/` and the
-// GUIs in `ui/`, registers the command set, and forwards proxy events
-// to the state machine. Per-concern logic lives in its own file.
 export default class BedwarsPlugin extends Plugin {
   id = 'bedwars';
   name = 'Bedwars Plugin';
@@ -45,16 +42,12 @@ export default class BedwarsPlugin extends Plugin {
   private gameStats!: GameStatsTracker;
   private whoTracker!: WhoTracker;
   private roster!: RosterManager;
-  // Named `stateMachine` (not `state`) because `Plugin.state` already
-  // exists on the base class as the plugin-lifecycle state getter.
+  // `Plugin.state` is taken by the base lifecycle getter, hence `stateMachine`.
   private stateMachine!: StateMachine;
 
   onLoad(ctx: PluginContext): void {
     this.ctx = ctx;
 
-    // Manager wiring. Order matters: Settings first, then anything
-    // that reads from it; StateMachine last because it pulls every
-    // other manager together.
     this.settings = new Settings(ctx);
     this.session = new Session(ctx, this.settings);
     this.gameStats = new GameStatsTracker(ctx, this.settings);
@@ -68,9 +61,8 @@ export default class BedwarsPlugin extends Plugin {
       this.whoTracker,
     );
 
-    // Plugin-contributed stat-tag options shown in /ds prefix/suffix cycles
-    // while the user is in a matching Bedwars mode. Previously these were
-    // hardcoded in the proxy ('BWS'/'FKDR'/'Stars' switch-cases).
+    // Stat-tag options surfaced in /ds prefix/suffix cycles while the user is
+    // in a matching Bedwars mode.
     const fkdrOption: PluginStatTagOption = {
       id: 'FKDR',
       display: 'FKDR',
@@ -92,8 +84,6 @@ export default class BedwarsPlugin extends Plugin {
       color: 'level',
     };
 
-    // Register our game mode so the duels+ stat-tag renderer knows how
-    // to pull Bedwars mode stats and stars for auto-tagging players.
     ctx.gameModes.register({
       id: 'hypixel-bedwars-queues',
       match: ({ gametype, mode }) => isHypixelMainBedwars(gametype, mode),
@@ -152,8 +142,7 @@ export default class BedwarsPlugin extends Plugin {
       this.stateMachine.onChatPacket(data);
     });
 
-    // Sidebar poll. Covers cases where game:end never fires or
-    // locraw:update arrives before we've reset.
+    // Fallback for cases where game:end never fires or locraw:update arrives stale.
     this.stateMachine.startSidebarPoll();
 
     this.registerCommands();
@@ -253,8 +242,6 @@ export default class BedwarsPlugin extends Plugin {
     });
   }
 
-  // Fetch a single player's overall Bedwars stats and print them in
-  // chat. Used by /bwcheck.
   private async lookupPlayer(username: string): Promise<void> {
     const ctx = this.ctx;
     ctx.client.sendChat(`${PREFIX} §7Looking up §e${username}§7...`);
@@ -293,9 +280,6 @@ export default class BedwarsPlugin extends Plugin {
     ctx.client.sendChat(`${DIVIDER}`);
   }
 
-  // Console debug dump for every chat packet while debugChat is on.
-  // Kept outside StateMachine because it's a developer tool, not a
-  // state-machine concern.
   private debugChatPacket(data: unknown): void {
     if (!this.settings.debugChat) return;
     if (this.ctx.gameState.locraw.gametype !== 'BEDWARS') return;

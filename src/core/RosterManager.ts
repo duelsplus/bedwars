@@ -16,23 +16,16 @@ import { isValidUsername } from '../util/chatJson';
 import { safeRatio } from '../util/format';
 import { openRosterGUI } from '../ui/RosterGUI';
 
-// Max retries for the tick loop that waits for /who names to arrive.
 const ROSTER_POLL_MAX_ATTEMPTS = 12;
-// Delay between retries of the tick loop (ms).
 const ROSTER_POLL_INTERVAL_MS = 400;
-// Initial delay before the first tick runs, giving /who time to reply.
 const ROSTER_POLL_INITIAL_MS = 500;
 // Every Nth tick we re-send /who in case the first one was dropped.
 const ROSTER_POLL_RESEND_EVERY = 4;
 
-// Drives roster printing: fires /who, waits for names, fetches stats,
-// prints the color-coded chat roster, and warns about threats.
-// Also exposes the last computed rows so the GUI command can show
-// them without re-fetching.
 export class RosterManager {
   private busy = false;
   private printedForServer: string | null = null;
-  /** Usernames we've decorated in the tab list — cleared on resetState. */
+  /** Usernames decorated in the tab list, cleared on resetState. */
   private decoratedUsernames = new Set<string>();
   lastRows: RowModel[] = [];
 
@@ -51,19 +44,13 @@ export class RosterManager {
     this.clearTabListDecorations();
   }
 
-  /**
-   * Remove every tab-list decoration this roster applied. Called from
-   * {@link clearPrintedForServer} and therefore from the state-machine
-   * reset flow, so game end / lobby join / mode switch all wipe the
-   * badges cleanly.
-   */
   clearTabListDecorations(): void {
     if (this.decoratedUsernames.size === 0) return;
     for (const name of this.decoratedUsernames) {
       try {
         this.ctx.tabList.clearPlayerDisplay(name);
       } catch {
-        /* best-effort — plugin shouldn't fail on cleanup */
+        /* best-effort */
       }
     }
     this.decoratedUsernames.clear();
@@ -71,17 +58,8 @@ export class RosterManager {
 
   /**
    * Apply tab-list badges for every non-nicked player in the roster.
-   * Format mirrors the screenshot reference:
-   *
-   *   `  [12✫] 3.21 fkdr, 1.5 wl, 4 ws`
-   *
-   * emitted as a suffix appended after the username. Uses the tab-list
-   * API's long-form channel (player_info UPDATE_DISPLAY_NAME), so this
-   * is NOT capped to 16 bytes.
-   *
-   * Each stat is individually color-coded via the same helpers the chat
-   * roster uses, so the tab badge reads identically to what /bwroster
-   * prints in chat.
+   * Goes through the player_info UPDATE_DISPLAY_NAME channel which has no
+   * 16-byte cap, unlike scoreboard team prefix/suffix.
    */
   private applyTabListDecorations(rows: RowModel[]): void {
     for (const r of rows) {
@@ -90,9 +68,8 @@ export class RosterManager {
       const fkdr = getFkdrColor(r.fkdr);
       const wl = getWlrColor(r.wlr);
       const ws = getWinstreakColor(r.winstreak, 'current');
-      // Leading `§r ` puts a visual gap between the server's name and our
-      // decoration; `§7` trailers reset color context between stats so
-      // the comma/label runs always render grey.
+      // Leading `§r ` separates from the server's name; `§7` trailers keep the
+      // comma/label runs grey between coloured stats.
       const suffix = ` §r${star} ${fkdr}§7 fkdr, ${wl}§7 wl, ${ws}§7 ws`;
       try {
         const ok = this.ctx.tabList.setPlayerDisplay(r.username, { suffix });
@@ -103,10 +80,8 @@ export class RosterManager {
     }
   }
 
-  // Trigger: send /who, retry until we have names, then print.
-  // `modeResolver` is called at trigger time to capture the current
-  // mode for use throughout the tick loop (matches the original
-  // closure-capture behavior).
+  // `modeResolver` is called at trigger time so the mode is captured before
+  // the tick loop runs.
   requestAndPrint(modeResolver: () => string | null, _reason: string): void {
     const ctx = this.ctx;
     const mode = modeResolver();
@@ -133,8 +108,6 @@ export class RosterManager {
     this.who.scheduleRetry(tick, ROSTER_POLL_INITIAL_MS);
   }
 
-  // Open the GUI roster using the last printed rows. If no rows yet,
-  // tell the user.
   openGUI(): void {
     if (this.lastRows.length === 0) {
       this.ctx.client.sendChat(`${PREFIX} §cNo roster data yet.`);
@@ -143,8 +116,6 @@ export class RosterManager {
     openRosterGUI(this.ctx, this.settings, this.lastRows);
   }
 
-  // Fetch stats for every player we captured, print a sorted chat
-  // roster, and run threat detection.
   private async printRoster(modeHint: string): Promise<void> {
     if (this.busy) return;
     const ctx = this.ctx;
@@ -182,9 +153,8 @@ export class RosterManager {
       rows.sort((a, b) => b.severity - a.severity);
       this.lastRows = rows;
 
-      // Push full-length ★Stars | FKDR badges into the tab list. Scoreboard
-      // team prefixes are capped to 16 bytes and can't fit both — this
-      // channel has no cap. Cleared on state-machine reset.
+      // Tab-list decorations are uncapped, unlike the 16-byte scoreboard team
+      // prefix channel; cleared on state-machine reset.
       this.applyTabListDecorations(rows);
 
       for (const r of rows) {
@@ -217,9 +187,8 @@ export class RosterManager {
     }
   }
 
-  // Turn a player's stats blob into a display row. Falls back to overall
-  // Bedwars stats when the current mode has no data (common for lightly
-  // played rotating queues).
+  // Falls back to overall Bedwars stats when the active mode has no data
+  // (common for lightly played rotating queues).
   private buildRow(
     username: string,
     st: HypixelPlayerStats | null,
@@ -268,10 +237,8 @@ export class RosterManager {
     const fkdr = safeRatio(fk, fd);
     const stars = st?.bedwars?.stars ?? 0;
 
-    // Winstreak: prefer the per-mode value, fall back to the top-level
-    // Bedwars `winstreak` field that Hypixel exposes on the raw blob.
-    // Cast through number|string to be defensive; the field is sometimes
-    // missing for freshly-created accounts.
+    // The Hypixel `winstreak` field is sometimes missing for fresh accounts
+    // and sometimes a string; coerce defensively.
     const overallWinstreakRaw = (bwRaw['winstreak'] as number | string | undefined) ?? 0;
     const overallWinstreak = typeof overallWinstreakRaw === 'string'
       ? parseInt(overallWinstreakRaw, 10) || 0
@@ -297,8 +264,6 @@ export class RosterManager {
     };
   }
 
-  // Emit a chat warning for high-stat opponents. Skips self and nicked
-  // players; gated by the user's threat-alert setting.
   private checkThreats(rows: RowModel[]): void {
     if (!this.settings.threatAlerts) return;
     const ctx = this.ctx;

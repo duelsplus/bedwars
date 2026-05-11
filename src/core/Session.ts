@@ -13,12 +13,9 @@ import {
   getWinstreakColor,
 } from '../util/statColors';
 
-// Stale-session cutoff: sessions older than this are discarded on load
-// so a fresh day doesn't pick up yesterday's numbers.
+// Sessions older than this are discarded on load.
 const SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
-// Session-scoped Bedwars stats: wins/losses, totals across games,
-// winstreak tracking. Persisted to storage under `session`.
 export class Session {
   private stats: BedwarsSessionStats;
 
@@ -44,8 +41,7 @@ export class Session {
     this.ctx.storage.set('session', this.stats);
   }
 
-  // Update session after a game ends. `game` is the per-game counters
-  // from GameStatsTracker (may be null if we lost tracking mid-game).
+  /** @param game Per-game counters from GameStatsTracker, null if tracking was lost. */
   onGameEnd(payload: GameEndPayload, game: GameTracker | null): void {
     const s = this.stats;
     s.gamesPlayed++;

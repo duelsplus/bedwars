@@ -15,16 +15,14 @@ import {
   getFkdrColor,
 } from '../util/statColors';
 
-// Chest GUI mirroring the chat roster. Rows are color-coded by
-// FKDR as stained-glass panes (green/yellow/red/purple) with full
-// stats in the lore.
+// Chest GUI mirroring the chat roster. FKDR tier picks the stained-glass colour.
 export function openRosterGUI(
   ctx: PluginContext,
   settings: Settings,
   rows: RowModel[],
 ): void {
   const self = ctx.client.username.toLowerCase();
-  // At least 2 rows, at most 6, one row per 9 players + 1 spacer.
+  // 2 rows minimum, 6 max; one row per 9 players plus a spacer.
   const guiRows = Math.min(6, Math.max(2, Math.ceil(rows.length / 9) + 1)) as
     | 1
     | 2
@@ -61,8 +59,7 @@ export function openRosterGUI(
       continue;
     }
 
-    // Stained-glass color index (Minecraft data value) by FKDR tier.
-    // Self is always cyan (3); the rest escalate from green to purple.
+    // Self is cyan; others escalate green -> purple by FKDR tier.
     let paneColor: number;
     if (isSelf) paneColor = 3;
     else if (r.fkdr >= 10) paneColor = 14;

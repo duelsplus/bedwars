@@ -1,6 +1,3 @@
-// Helpers for reading Minecraft chat JSON payloads as plain text, and
-// for validating strings as Minecraft usernames.
-
 export function stripFormatting(s: string): string {
   return s.replace(/§[0-9a-fk-or]/gi, '');
 }
@@ -10,8 +7,7 @@ export function isValidUsername(name: string | undefined | null): name is string
   return /^[A-Za-z0-9_]{1,16}$/.test(name);
 }
 
-// Recursively flatten a Minecraft chat component tree into plain text.
-// Handles `text`, `translate`+`with`, and `extra` children.
+/** Flattens a chat component tree into plain text (`text`, `translate`+`with`, `extra`). */
 export function readText(node: unknown): string {
   if (!node) return '';
   if (typeof node === 'string') return stripFormatting(node);

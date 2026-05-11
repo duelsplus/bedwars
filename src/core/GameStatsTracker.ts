@@ -11,15 +11,12 @@ import {
   getWlrColor,
 } from '../util/statColors';
 
-// Per-game stat tracking: final kills/deaths, beds broken/lost, kills,
-// deaths. Also owns the chat-derived alerts (sounds, action bar, title)
-// for bed destruction and final kills.
 export class GameStatsTracker {
   private game: GameTracker | null = null;
 
   constructor(private ctx: PluginContext, private settings: Settings) {}
 
-  // Current game tracker, or null if we're not in a tracked game.
+  /** null when not currently in a tracked game. */
   get current(): GameTracker | null {
     return this.game;
   }
@@ -40,20 +37,17 @@ export class GameStatsTracker {
     this.game = null;
   }
 
-  // Scan a flattened chat line for final kills / deaths, regular kills,
-  // and bed destruction events. Also emits sound/title/actionbar alerts
-  // when the relevant setting is on.
   processChat(flat: string): void {
     if (!this.game) return;
     const ctx = this.ctx;
     const self = ctx.client.username;
     const s = this.settings;
 
-    // Hypixel Bedwars kill/death lines look like
+    // Kill/death lines look like:
     //   "[R] Player1 was shot by [B] Player2. FINAL KILL!"
-    // or "Player1 disconnected." after the proxy strips colour codes.
-    // We pull the victim out from before " was "/" disconnected." and the
-    // killer out from after " by ", ignoring any team-prefix like "[R] ".
+    //   "Player1 disconnected."
+    // Pull victim from before " was " / " disconnected.", killer from after
+    // " by ", and ignore any "[R] " team prefix.
     const victimMatch = flat.match(
       /(?:^|\s)(?:\[[^\]]+\]\s+)?(\w{1,16})\s+(?:was\s|disconnected\.)/,
     );
@@ -79,8 +73,7 @@ export class GameStatsTracker {
         }
       }
     } else if (victim || killer) {
-      // Regular (non-final) kill on the surviving team — count it but
-      // skip the alerts; FK alerts are the loud ones.
+      // Non-final kill: count it but skip the alerts; FK alerts are the loud ones.
       if (killer === self) {
         this.game.kills++;
       } else if (victim === self) {
