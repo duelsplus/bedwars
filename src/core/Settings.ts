@@ -11,6 +11,8 @@ export class Settings {
   finalKillAlerts: boolean;
   bedBreakAlerts: boolean;
   streakAlerts: boolean;
+  postGameRecap: boolean;
+  deathRecap: boolean;
 
   constructor(private ctx: PluginContext) {
     this.debugChat = ctx.storage.get<boolean>('debugChat') ?? false;
@@ -21,6 +23,8 @@ export class Settings {
     this.finalKillAlerts = ctx.storage.get<boolean>('finalKillAlerts') ?? true;
     this.bedBreakAlerts = ctx.storage.get<boolean>('bedBreakAlerts') ?? true;
     this.streakAlerts = ctx.storage.get<boolean>('streakAlerts') ?? true;
+    this.postGameRecap = ctx.storage.get<boolean>('postGameRecap') ?? true;
+    this.deathRecap = ctx.storage.get<boolean>('deathRecap') ?? true;
   }
 
   set(key: string, value: unknown): void {

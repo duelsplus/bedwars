@@ -117,6 +117,8 @@ function alertsStatus(s: Settings): string {
   if (s.finalKillAlerts) on.push('§aFK');
   if (s.bedBreakAlerts) on.push('§aBeds');
   if (s.streakAlerts) on.push('§aStreaks');
+  if (s.postGameRecap) on.push('§aRecap');
+  if (s.deathRecap) on.push('§aDeath');
   return on.length ? on.join('§7, ') : '§cAll off';
 }
 
@@ -386,7 +388,7 @@ function openAlertsGUI(
     );
 
     gui.updateSlot(
-      15,
+      14,
       makeSimpleToggle(
         ctx,
         settings.streakAlerts,
@@ -396,6 +398,36 @@ function openAlertsGUI(
       ),
       () => {
         settings.set('streakAlerts', !settings.streakAlerts);
+        updateAll();
+      },
+    );
+
+    gui.updateSlot(
+      15,
+      makeSimpleToggle(
+        ctx,
+        settings.postGameRecap,
+        340,
+        'Post-Game Recap',
+        'Print this game\'s FK/FD/beds and session totals after every game',
+      ),
+      () => {
+        settings.set('postGameRecap', !settings.postGameRecap);
+        updateAll();
+      },
+    );
+
+    gui.updateSlot(
+      16,
+      makeSimpleToggle(
+        ctx,
+        settings.deathRecap,
+        397,
+        'Death Recap',
+        'When you die, chat the killer\'s stars + FKDR pulled from the roster cache',
+      ),
+      () => {
+        settings.set('deathRecap', !settings.deathRecap);
         updateAll();
       },
     );

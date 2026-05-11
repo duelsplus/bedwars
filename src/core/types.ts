@@ -36,3 +36,14 @@ export interface BedwarsSessionStats {
   bestWinstreak: number;
   startedAt: number;
 }
+
+// Top-level session container. Holds one bucket per mode key (lowercase
+// locraw mode) plus the wall-clock `startedAt` used for the global session
+// TTL.
+export interface BedwarsSessionState {
+  startedAt: number;
+  /** Mode-key → bucket; the special key `__all__` is the cross-mode aggregate. */
+  modes: Record<string, BedwarsSessionStats>;
+}
+
+export const SESSION_AGGREGATE_KEY = '__all__';

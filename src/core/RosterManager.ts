@@ -1,6 +1,12 @@
-import type { PluginContext, PluginLogger, HypixelPlayerStats } from '@duelsplus/plugin-api';
+import type {
+  PluginContext,
+  PluginLogger,
+  HypixelPlayerStats,
+  RosterSource,
+  WhoTracker,
+  PartyTracker,
+} from '@duelsplus/plugin-api';
 import type { Settings } from './Settings';
-import type { WhoTracker } from './WhoTracker';
 import type { RowModel } from './types';
 import { PREFIX, BULLET, SELF_BULLET, DIVIDER } from './constants';
 import { locrawModeToBedwarsApiKey } from './modeDetection';
@@ -33,11 +39,18 @@ export class RosterManager {
     private ctx: PluginContext,
     private settings: Settings,
     private who: WhoTracker,
+    private party: PartyTracker,
     private log: PluginLogger,
   ) {}
 
   getPrintedForServer(): string | null {
     return this.printedForServer;
+  }
+
+  /** Lookup a row in the most recent roster by username (case-insensitive). */
+  findRow(name: string): RowModel | null {
+    const key = name.toLowerCase();
+    return this.lastRows.find((r) => r.username.toLowerCase() === key) ?? null;
   }
 
   clearPrintedForServer(): void {
@@ -84,29 +97,65 @@ export class RosterManager {
   // `modeResolver` is called at trigger time so the mode is captured before
   // the tick loop runs.
   requestAndPrint(modeResolver: () => string | null, _reason: string): void {
-    const ctx = this.ctx;
-    const mode = modeResolver();
-    if (!mode) return;
+    this.runRosterFlow({
+      source: this.who,
+      modeResolver,
+      title: 'Bedwars Roster',
+      gateOnServer: true,
+      applyTabDecorations: true,
+      checkThreats: true,
+      noNamesMessage: '/who returned no ONLINE names after retries',
+    });
+  }
 
-    this.who.clearNames();
-    this.who.send();
+  /**
+   * Same pipeline as `/bwroster` but pulls names from /p list instead of
+   * /who. Not gated by server (party lookups are on-demand and re-runnable)
+   * and skips tab decorations + threat alerts because the targets are
+   * teammates, not opponents.
+   */
+  requestAndPrintParty(): void {
+    this.runRosterFlow({
+      source: this.party,
+      modeResolver: () => this.ctx.gameState.currentMode,
+      title: 'Party Roster',
+      gateOnServer: false,
+      applyTabDecorations: false,
+      checkThreats: false,
+      noNamesMessage: '/p list returned no party members after retries (are you in a party?)',
+    });
+  }
+
+  // Generic poll + fetch + print pipeline shared by /bwroster and /bwparty.
+  private runRosterFlow(opts: {
+    source: RosterSource;
+    modeResolver: () => string | null;
+    title: string;
+    gateOnServer: boolean;
+    applyTabDecorations: boolean;
+    checkThreats: boolean;
+    noNamesMessage: string;
+  }): void {
+    const mode = opts.modeResolver();
+    opts.source.clearNames();
+    opts.source.send();
 
     let attempt = 0;
     const tick = (): void => {
-      if (this.printedForServer === ctx.gameState.locraw.server) return;
+      if (opts.gateOnServer && this.printedForServer === this.ctx.gameState.locraw.server) return;
       attempt++;
-      if (this.who.getNames().size > 0) {
-        void this.printRoster(mode);
+      if (opts.source.getNames().size > 0) {
+        void this.printRoster(mode ?? '', opts);
         return;
       }
       if (attempt <= ROSTER_POLL_MAX_ATTEMPTS) {
-        if (attempt % ROSTER_POLL_RESEND_EVERY === 0) this.who.send();
-        this.who.scheduleRetry(tick, ROSTER_POLL_INTERVAL_MS);
+        if (attempt % ROSTER_POLL_RESEND_EVERY === 0) opts.source.send();
+        opts.source.scheduleRetry(tick, ROSTER_POLL_INTERVAL_MS);
         return;
       }
-      this.log.warn('/who returned no ONLINE names after retries');
+      this.log.warn(opts.noNamesMessage);
     };
-    this.who.scheduleRetry(tick, ROSTER_POLL_INITIAL_MS);
+    opts.source.scheduleRetry(tick, ROSTER_POLL_INITIAL_MS);
   }
 
   openGUI(): void {
@@ -117,24 +166,35 @@ export class RosterManager {
     openRosterGUI(this.ctx, this.settings, this.lastRows);
   }
 
-  private async printRoster(modeHint: string): Promise<void> {
+  private async printRoster(
+    modeHint: string,
+    opts: {
+      source: RosterSource;
+      title: string;
+      gateOnServer: boolean;
+      applyTabDecorations: boolean;
+      checkThreats: boolean;
+    },
+  ): Promise<void> {
     if (this.busy) return;
     const ctx = this.ctx;
     const server = ctx.gameState.locraw.server;
-    if (!server) return;
-    if (this.printedForServer === server) return;
+    if (opts.gateOnServer) {
+      if (!server) return;
+      if (this.printedForServer === server) return;
+    }
 
-    const players = Array.from(this.who.getNames().values()).filter(isValidUsername);
+    const players = Array.from(opts.source.getNames().values()).filter(isValidUsername);
     if (players.length === 0) return;
 
     this.busy = true;
     try {
       const mode = ctx.gameState.currentMode ?? modeHint;
-      const modeKey = locrawModeToBedwarsApiKey(mode);
+      const modeKey = mode ? locrawModeToBedwarsApiKey(mode) : '';
       const self = ctx.client.username.toLowerCase();
 
       ctx.client.sendChat(`\n${DIVIDER}`);
-      ctx.client.sendChat(`${PREFIX} §6Bedwars Roster §8(§f${players.length} §7players§8)`);
+      ctx.client.sendChat(`${PREFIX} §6${opts.title} §8(§f${players.length} §7players§8)`);
       ctx.client.sendChat(`${DIVIDER}`);
 
       const results = await Promise.allSettled(
@@ -154,9 +214,11 @@ export class RosterManager {
       rows.sort((a, b) => b.severity - a.severity);
       this.lastRows = rows;
 
-      // Tab-list decorations are uncapped, unlike the 16-byte scoreboard team
-      // prefix channel; cleared on state-machine reset.
-      this.applyTabListDecorations(rows);
+      if (opts.applyTabDecorations) {
+        // Tab-list decorations are uncapped, unlike the 16-byte scoreboard team
+        // prefix channel; cleared on state-machine reset.
+        this.applyTabListDecorations(rows);
+      }
 
       for (const r of rows) {
         const isSelf = r.username.toLowerCase() === self;
@@ -179,8 +241,12 @@ export class RosterManager {
       }
       ctx.client.sendChat(`${DIVIDER}`);
 
-      this.printedForServer = server;
-      this.checkThreats(rows);
+      if (opts.gateOnServer && server) {
+        this.printedForServer = server;
+      }
+      if (opts.checkThreats) {
+        this.checkThreats(rows);
+      }
     } catch (e) {
       this.log.warn('roster fetch/print failed', e);
     } finally {
@@ -280,7 +346,16 @@ export class RosterManager {
 
     if (threats.length === 0) return;
 
-    ctx.client.playSound('note.pling', 1.0, 0.5);
+    // Pitch by worst-threat tier so the user can size up the lobby by ear:
+    // the higher the FKDR of the worst player, the higher (more urgent) the pitch.
+    const worstFkdr = Math.max(...threats.map((t) => t.fkdr));
+    const pitch =
+      worstFkdr >= 30 ? 2.0 :
+      worstFkdr >= 20 ? 1.5 :
+      worstFkdr >= 10 ? 1.0 :
+      0.5;
+    ctx.client.playSound('note.pling', 1.0, pitch);
+
     ctx.client.sendChat(
       `${PREFIX} §c§l⚠ §r§c${threats.length} threat${threats.length > 1 ? 's' : ''} detected:`,
     );

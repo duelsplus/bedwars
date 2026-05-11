@@ -1,9 +1,11 @@
 import type { PluginContext } from '@duelsplus/plugin-api';
 import type { GameTracker } from './types';
 import type { Settings } from './Settings';
+import type { RosterManager } from './RosterManager';
 import { PREFIX, BULLET, DIVIDER } from './constants';
 import { formatDuration, safeRatio } from '../util/format';
 import {
+  formatBedwarsLevel,
   getFinalKillsColor,
   getLossesColor,
   getFkdrColor,
@@ -11,10 +13,17 @@ import {
   getWlrColor,
 } from '../util/statColors';
 
+// Delay before the death recap chats so it doesn't crowd the kill message.
+const DEATH_RECAP_DELAY_MS = 2000;
+
 export class GameStatsTracker {
   private game: GameTracker | null = null;
 
-  constructor(private ctx: PluginContext, private settings: Settings) {}
+  constructor(
+    private ctx: PluginContext,
+    private settings: Settings,
+    private roster: RosterManager,
+  ) {}
 
   /** null when not currently in a tracked game. */
   get current(): GameTracker | null {
@@ -71,6 +80,7 @@ export class GameStatsTracker {
             `§c§lFinal Death! §7(${this.game.finalDeaths} FD this game)`,
           );
         }
+        if (killer) this.scheduleDeathRecap(killer);
       }
     } else if (victim || killer) {
       // Non-final kill: count it but skip the alerts; FK alerts are the loud ones.
@@ -78,6 +88,7 @@ export class GameStatsTracker {
         this.game.kills++;
       } else if (victim === self) {
         this.game.deaths++;
+        if (killer) this.scheduleDeathRecap(killer);
       }
     }
 
@@ -104,6 +115,22 @@ export class GameStatsTracker {
         ctx.client.playSound('note.pling', 0.5, 1.5);
       }
     }
+  }
+
+  // Delay-chat the killer's stars/FKDR pulled from the cached roster.
+  // Cheap to call: skips if the recap is off, the roster hasn't printed yet,
+  // or the killer is nicked.
+  private scheduleDeathRecap(killerName: string): void {
+    if (!this.settings.deathRecap) return;
+    const row = this.roster.findRow(killerName);
+    if (!row || row.nicked) return;
+
+    this.ctx.scheduler.setTimeout(() => {
+      const star = formatBedwarsLevel(row.stars);
+      this.ctx.client.sendChat(
+        `${PREFIX} §c§l☠ §r§7Killed by ${star} §e${row.username} §8(§fFKDR ${getFkdrColor(row.fkdr)}§8)`,
+      );
+    }, DEATH_RECAP_DELAY_MS);
   }
 
   show(): void {

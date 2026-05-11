@@ -1,5 +1,6 @@
 import {
   Plugin,
+  PartyTracker,
   createLogger,
   type PluginContext,
   type GameStartPayload,
@@ -43,6 +44,7 @@ export default class BedwarsPlugin extends Plugin {
   private session!: Session;
   private gameStats!: GameStatsTracker;
   private whoTracker!: WhoTracker;
+  private partyTracker!: PartyTracker;
   private roster!: RosterManager;
   // `Plugin.state` is taken by the base lifecycle getter, hence `stateMachine`.
   private stateMachine!: StateMachine;
@@ -57,9 +59,10 @@ export default class BedwarsPlugin extends Plugin {
 
     this.settings = new Settings(ctx);
     this.session = new Session(ctx, this.settings);
-    this.gameStats = new GameStatsTracker(ctx, this.settings);
     this.whoTracker = new WhoTracker(ctx);
-    this.roster = new RosterManager(ctx, this.settings, this.whoTracker, rosterLog);
+    this.partyTracker = new PartyTracker(ctx);
+    this.roster = new RosterManager(ctx, this.settings, this.whoTracker, this.partyTracker, rosterLog);
+    this.gameStats = new GameStatsTracker(ctx, this.settings, this.roster);
     this.stateMachine = new StateMachine(
       ctx,
       this.settings,
@@ -148,6 +151,11 @@ export default class BedwarsPlugin extends Plugin {
     ctx.packets.onClientbound('chat', (data) => {
       this.debugChatPacket(data);
       this.stateMachine.onChatPacket(data);
+      // Party tracker runs in parallel with the in-game state machine — it
+      // only fires after /bwparty triggers a /p list, but listens for the
+      // response whenever it arrives.
+      const raw = (data as { message?: string })?.message;
+      if (typeof raw === 'string') this.partyTracker.captureResponse(raw);
     });
 
     // Fallback for cases where game:end never fires or locraw:update arrives stale.
@@ -184,6 +192,16 @@ export default class BedwarsPlugin extends Plugin {
     });
 
     ctx.commands.register({
+      name: 'bwparty',
+      description: 'Roster lookup over your current party (sends /p list, fetches Bedwars stats)',
+      aliases: ['bwp'],
+      usage: '/bwparty',
+      execute: () => {
+        this.roster.requestAndPrintParty();
+      },
+    });
+
+    ctx.commands.register({
       name: 'bwsettings',
       description: 'Open Bedwars plugin settings',
       aliases: ['bws'],
@@ -216,16 +234,17 @@ export default class BedwarsPlugin extends Plugin {
 
     ctx.commands.register({
       name: 'bwsession',
-      description: 'Show Bedwars session stats',
+      description: 'Show Bedwars session stats (all modes, current mode, or a specific mode)',
       aliases: ['bwss'],
-      usage: '/bwsession [reset]',
+      usage: '/bwsession [reset|all|current|<mode>]',
       execute: (args) => {
-        if (args[0]?.toLowerCase() === 'reset') {
+        const arg = args[0]?.toLowerCase();
+        if (arg === 'reset') {
           this.session.reset();
           ctx.client.sendChat(`${PREFIX} §aSession stats reset.`);
           return;
         }
-        this.session.show();
+        this.session.show(arg);
       },
     });
 
