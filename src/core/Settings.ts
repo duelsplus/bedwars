@@ -13,6 +13,11 @@ export class Settings {
   streakAlerts: boolean;
   postGameRecap: boolean;
   deathRecap: boolean;
+  stickyTabDecorations: boolean;
+  generatorTimers: boolean;
+  glowEnabled: boolean;
+  glowThreats: boolean;
+  glowLowStat: boolean;
 
   constructor(private ctx: PluginContext) {
     this.debugChat = ctx.storage.get<boolean>('debugChat') ?? false;
@@ -25,6 +30,13 @@ export class Settings {
     this.streakAlerts = ctx.storage.get<boolean>('streakAlerts') ?? true;
     this.postGameRecap = ctx.storage.get<boolean>('postGameRecap') ?? true;
     this.deathRecap = ctx.storage.get<boolean>('deathRecap') ?? true;
+    this.stickyTabDecorations = ctx.storage.get<boolean>('stickyTabDecorations') ?? false;
+    this.generatorTimers = ctx.storage.get<boolean>('generatorTimers') ?? true;
+    // Glow is Lunar-only and off by default; the user opts in once they
+    // know their client supports it.
+    this.glowEnabled = ctx.storage.get<boolean>('glowEnabled') ?? false;
+    this.glowThreats = ctx.storage.get<boolean>('glowThreats') ?? true;
+    this.glowLowStat = ctx.storage.get<boolean>('glowLowStat') ?? false;
   }
 
   set(key: string, value: unknown): void {

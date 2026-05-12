@@ -1,5 +1,7 @@
 export interface RowModel {
   username: string;
+  /** Hypixel UUID when the API returned stats; null for nicked players. */
+  uuid: string | null;
   wins: number;
   losses: number;
   wlr: number;
@@ -47,3 +49,29 @@ export interface BedwarsSessionState {
 }
 
 export const SESSION_AGGREGATE_KEY = '__all__';
+
+export interface RivalryEntry {
+  /** Games where we won while this player was in the lobby. */
+  wins: number;
+  /** Games where we lost while this player was in the lobby. */
+  losses: number;
+  /** Total games this player shared a lobby with us. */
+  gamesShared: number;
+  /** Last `Date.now()` we shared a lobby with them. */
+  lastSeen: number;
+}
+
+export type RivalryStore = Record<string, RivalryEntry>;
+
+export interface MapStatsEntry {
+  wins: number;
+  losses: number;
+  finalKills: number;
+  finalDeaths: number;
+  bedsBroken: number;
+  bedsLost: number;
+  gamesPlayed: number;
+  lastPlayed: number;
+}
+
+export type MapStatsStore = Record<string, MapStatsEntry>;

@@ -29,6 +29,10 @@ import { Session } from './core/Session';
 import { GameStatsTracker } from './core/GameStatsTracker';
 import { WhoTracker } from './core/WhoTracker';
 import { RosterManager } from './core/RosterManager';
+import { RivalryLog } from './core/RivalryLog';
+import { MapStats } from './core/MapStats';
+import { GeneratorTimers } from './core/GeneratorTimers';
+import { GlowManager } from './core/GlowManager';
 import { StateMachine } from './core/StateMachine';
 import { openSettingsGUI } from './ui/SettingsGUI';
 
@@ -46,6 +50,10 @@ export default class BedwarsPlugin extends Plugin {
   private whoTracker!: WhoTracker;
   private partyTracker!: PartyTracker;
   private roster!: RosterManager;
+  private rivalry!: RivalryLog;
+  private mapStats!: MapStats;
+  private generatorTimers!: GeneratorTimers;
+  private glow!: GlowManager;
   // `Plugin.state` is taken by the base lifecycle getter, hence `stateMachine`.
   private stateMachine!: StateMachine;
   private chatDebugLog!: ScopedLogger;
@@ -63,6 +71,15 @@ export default class BedwarsPlugin extends Plugin {
     this.partyTracker = new PartyTracker(ctx);
     this.roster = new RosterManager(ctx, this.settings, this.whoTracker, this.partyTracker, rosterLog);
     this.gameStats = new GameStatsTracker(ctx, this.settings, this.roster);
+    this.rivalry = new RivalryLog(ctx);
+    this.mapStats = new MapStats(ctx);
+    this.generatorTimers = new GeneratorTimers(
+      ctx,
+      this.settings,
+      createLogger(ctx.logger, 'gen-timers'),
+    );
+    this.glow = new GlowManager(ctx, this.settings, createLogger(ctx.logger, 'glow'));
+    this.roster.addRosterListener((rows) => this.glow.applyForRoster(rows));
     this.stateMachine = new StateMachine(
       ctx,
       this.settings,
@@ -142,11 +159,20 @@ export default class BedwarsPlugin extends Plugin {
     ctx.events.on('game:end', (payload: GameEndPayload) => {
       if (this.stateMachine.inBedwarsGame) {
         this.session.onGameEnd(payload, this.gameStats.current);
+        this.rivalry.recordGame(payload, this.roster.lastRows);
+        this.mapStats.recordGame(payload, this.gameStats.current);
       }
+      this.glow.clearAll();
       this.stateMachine.resetState();
     });
-    ctx.events.on('game:leave', () => this.stateMachine.resetState());
-    ctx.events.on('lobby:join', () => this.stateMachine.resetState());
+    ctx.events.on('game:leave', () => {
+      this.glow.clearAll();
+      this.stateMachine.resetState();
+    });
+    ctx.events.on('lobby:join', () => {
+      this.glow.clearAll();
+      this.stateMachine.resetState();
+    });
 
     ctx.packets.onClientbound('chat', (data) => {
       this.debugChatPacket(data);
@@ -160,6 +186,7 @@ export default class BedwarsPlugin extends Plugin {
 
     // Fallback for cases where game:end never fires or locraw:update arrives stale.
     this.stateMachine.startSidebarPoll();
+    this.generatorTimers.start();
 
     this.registerCommands();
   }
@@ -230,6 +257,26 @@ export default class BedwarsPlugin extends Plugin {
       aliases: ['bwg'],
       usage: '/bwgame',
       execute: () => this.gameStats.show(),
+    });
+
+    ctx.commands.register({
+      name: 'bwmap',
+      description: 'Show Bedwars stats per map (top by playcount or filtered)',
+      aliases: ['bwm'],
+      usage: '/bwmap [<map>|current|top|all|clear]',
+      execute: (args) => {
+        this.mapStats.show(args[0]);
+      },
+    });
+
+    ctx.commands.register({
+      name: 'bwrivalry',
+      description: 'Show top rivals you keep running into',
+      aliases: ['bwriv'],
+      usage: '/bwrivalry [<player>|top|all|clear]',
+      execute: (args) => {
+        this.rivalry.show(args[0]);
+      },
     });
 
     ctx.commands.register({
@@ -328,6 +375,8 @@ export default class BedwarsPlugin extends Plugin {
 
   onDisable(): void {
     this.stateMachine.stopSidebarPoll();
+    this.generatorTimers.stop();
+    this.glow.clearAll();
     this.stateMachine.resetState();
     this.session.persist();
   }

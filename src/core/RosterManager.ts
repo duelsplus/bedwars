@@ -33,6 +33,8 @@ export class RosterManager {
   private printedForServer: string | null = null;
   /** Usernames decorated in the tab list, cleared on resetState. */
   private decoratedUsernames = new Set<string>();
+  /** External listeners notified after a roster is computed (GlowManager etc.). */
+  private rosterListeners: Array<(rows: RowModel[]) => void> = [];
   lastRows: RowModel[] = [];
 
   constructor(
@@ -53,9 +55,19 @@ export class RosterManager {
     return this.lastRows.find((r) => r.username.toLowerCase() === key) ?? null;
   }
 
+  /** Subscribe to roster updates. Fires once per /bwroster or /bwparty run. */
+  addRosterListener(cb: (rows: RowModel[]) => void): void {
+    this.rosterListeners.push(cb);
+  }
+
   clearPrintedForServer(): void {
     this.printedForServer = null;
-    this.clearTabListDecorations();
+    // Stickied decorations persist past state-machine resets so the player's
+    // last roster badges remain in the lobby tab list until the next game's
+    // roster overwrites them.
+    if (!this.settings.stickyTabDecorations) {
+      this.clearTabListDecorations();
+    }
   }
 
   clearTabListDecorations(): void {
@@ -76,6 +88,9 @@ export class RosterManager {
    * 16-byte cap, unlike scoreboard team prefix/suffix.
    */
   private applyTabListDecorations(rows: RowModel[]): void {
+    // Always start from a clean slate so a returning player from the prior
+    // roster doesn't keep a stale badge after the new /who.
+    this.clearTabListDecorations();
     for (const r of rows) {
       if (r.nicked) continue;
       const star = formatBedwarsLevel(r.stars);
@@ -213,6 +228,7 @@ export class RosterManager {
 
       rows.sort((a, b) => b.severity - a.severity);
       this.lastRows = rows;
+      for (const cb of this.rosterListeners) cb(rows);
 
       if (opts.applyTabDecorations) {
         // Tab-list decorations are uncapped, unlike the 16-byte scoreboard team
@@ -265,6 +281,7 @@ export class RosterManager {
     if (!st) {
       return {
         username: display,
+        uuid: null,
         wins: 0,
         losses: 0,
         wlr: 0,
@@ -317,6 +334,7 @@ export class RosterManager {
     const severity = wlr * 10_000 + fkdr * 100 + stars;
     return {
       username: display,
+      uuid: st?.uuid ?? null,
       wins,
       losses,
       wlr,

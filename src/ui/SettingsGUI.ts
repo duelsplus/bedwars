@@ -104,7 +104,10 @@ function makeClose(ctx: PluginContext): GUIItemData {
 // Status summaries rendered on category items
 
 function rosterStatus(s: Settings): string {
-  return s.autoRoster ? '§aAuto-roster on' : '§cAuto-roster off';
+  const parts: string[] = [];
+  parts.push(s.autoRoster ? '§aAuto-roster' : '§cAuto-roster');
+  if (s.stickyTabDecorations) parts.push('§aSticky');
+  return parts.join('§7, ');
 }
 
 function threatStatus(s: Settings): string {
@@ -119,6 +122,7 @@ function alertsStatus(s: Settings): string {
   if (s.streakAlerts) on.push('§aStreaks');
   if (s.postGameRecap) on.push('§aRecap');
   if (s.deathRecap) on.push('§aDeath');
+  if (s.generatorTimers) on.push('§aGen');
   return on.length ? on.join('§7, ') : '§cAll off';
 }
 
@@ -130,6 +134,16 @@ function statTagStatus(ctx: PluginContext): string {
 
 function advancedStatus(s: Settings): string {
   return s.debugChat ? '§eDebug chat: §aon' : '§7Debug chat: §8off';
+}
+
+const LUNAR_NOTE = '§8Lunar Client only';
+
+function glowStatus(s: Settings): string {
+  if (!s.glowEnabled) return '§cDisabled';
+  const on: string[] = [];
+  if (s.glowThreats) on.push('§cThreats');
+  if (s.glowLowStat) on.push('§7Low');
+  return on.length ? on.join('§7, ') : '§7No tiers';
 }
 
 const BW_STAT_OPTIONS = ['None', 'Stars', 'Wins', 'Losses', 'WLR', 'FKDR', 'WS'] as const;
@@ -196,6 +210,15 @@ export function openSettingsGUI(
     );
 
     gui.updateSlot(
+      13,
+      makeCategory(ctx, 370, '§bGlow', glowStatus(settings)),
+      () => {
+        gui.close();
+        openGlowGUI(ctx, settings, session);
+      },
+    );
+
+    gui.updateSlot(
       14,
       makeCategory(ctx, MATERIAL_PAPER, '§fStat Tags', statTagStatus(ctx)),
       () => {
@@ -246,7 +269,7 @@ function openRosterGUI(
 
   const updateAll = (): void => {
     gui.updateSlot(
-      13,
+      11,
       makeSimpleToggle(
         ctx,
         settings.autoRoster,
@@ -256,6 +279,21 @@ function openRosterGUI(
       ),
       () => {
         settings.set('autoRoster', !settings.autoRoster);
+        updateAll();
+      },
+    );
+
+    gui.updateSlot(
+      15,
+      makeSimpleToggle(
+        ctx,
+        settings.stickyTabDecorations,
+        421,
+        'Sticky Decorations',
+        'Keep tab-list stat badges pinned across game ends until the next roster prints',
+      ),
+      () => {
+        settings.set('stickyTabDecorations', !settings.stickyTabDecorations);
         updateAll();
       },
     );
@@ -432,6 +470,21 @@ function openAlertsGUI(
       },
     );
 
+    gui.updateSlot(
+      17,
+      makeSimpleToggle(
+        ctx,
+        settings.generatorTimers,
+        264,
+        'Gen Timers',
+        'Action-bar countdown when a diamond/emerald gen is about to tier up',
+      ),
+      () => {
+        settings.set('generatorTimers', !settings.generatorTimers);
+        updateAll();
+      },
+    );
+
     gui.updateSlot(22, makeBack(ctx), () => {
       gui.close();
       openSettingsGUI(ctx, settings, session);
@@ -511,6 +564,78 @@ function openAdvancedGUI(
       ),
       () => {
         settings.set('debugChat', !settings.debugChat);
+        updateAll();
+      },
+    );
+
+    gui.updateSlot(22, makeBack(ctx), () => {
+      gui.close();
+      openSettingsGUI(ctx, settings, session);
+    });
+  };
+
+  updateAll();
+  gui.open();
+}
+
+// Glow sub-menu
+
+function openGlowGUI(
+  ctx: PluginContext,
+  settings: Settings,
+  session: Session,
+): void {
+  const gui = createGUI(ctx, '§bGlow');
+  if (!gui) return;
+  gui.fillBlack();
+
+  const updateAll = (): void => {
+    gui.updateSlot(
+      11,
+      makeSimpleToggle(
+        ctx,
+        settings.glowEnabled,
+        370,
+        'Enable Glow',
+        'Master switch for Lunar Client outline colours on opponents',
+        LUNAR_NOTE,
+      ),
+      () => {
+        settings.set('glowEnabled', !settings.glowEnabled);
+        updateAll();
+      },
+    );
+
+    gui.updateSlot(
+      13,
+      makeSimpleToggle(
+        ctx,
+        settings.glowThreats,
+        351,
+        '§cThreat Glow',
+        'Outline high-stat opponents in red (FKDR / stars threshold)',
+        LUNAR_NOTE,
+        1, // dye damage = red
+      ),
+      () => {
+        settings.set('glowThreats', !settings.glowThreats);
+        updateAll();
+      },
+    );
+
+    gui.updateSlot(
+      15,
+      makeSimpleToggle(
+        ctx,
+        settings.glowLowStat,
+        351,
+        '§7Low-Stat Glow',
+        'Outline sub-1 FKDR opponents in grey so you can tell them apart at a glance',
+        LUNAR_NOTE,
+        8, // dye damage = grey
+      ),
+      () => {
+        settings.set('glowLowStat', !settings.glowLowStat);
         updateAll();
       },
     );
